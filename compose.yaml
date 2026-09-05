@@ -1,0 +1,43 @@
+name: security-inbox
+
+x-app: &app
+  image: security-inbox:local
+  working_dir: /app
+  environment:
+    SECURITY_INBOX_DB: /app/data/security-inbox.sqlite
+    SECURITY_INBOX_CONTAINER: "true"
+  volumes:
+    - type: bind
+      source: ./data
+      target: /app/data
+  init: true
+
+services:
+  app:
+    <<: *app
+    build:
+      context: .
+    command: ["npm", "run", "seed"]
+
+  web:
+    <<: *app
+    command: ["npm", "run", "web"]
+    ports:
+      - "127.0.0.1:3300:3300"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3300/')
+          .then((response) => process.exit(response.ok ? 0 : 1))
+          .catch(() => process.exit(1))
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  mcp:
+    <<: *app
+    command: ["node", "dist/src/mcp/server.js"]

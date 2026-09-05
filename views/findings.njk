@@ -1,0 +1,41 @@
+{% extends "base.njk" %}
+{% block title %}{{ project.name }} · Security Inbox{% endblock %}
+{% block content %}
+  <nav class="breadcrumbs" aria-label="Migas de pan"><a href="/">Proyectos</a><span aria-hidden="true">/</span><span>{{ project.name }}</span></nav>
+  <section class="page-heading page-heading--compact">
+    <div><p class="eyebrow">Cuaderno de proyecto</p><h1>{{ project.name }}</h1><p class="lede">{{ project.description }}</p></div>
+    <a class="button-link" href="/projects/{{ project.id }}/findings/new">Anotar sospecha</a>
+  </section>
+
+  <form method="get" action="/projects/{{ project.id }}/findings" class="filter-bar" aria-label="Filtrar hallazgos">
+    <label>Buscar <input type="search" name="query" maxlength="200" value="{{ filters.query or '' }}" placeholder="Título u origen"></label>
+    <label>Gravedad
+      <select name="severity"><option value="">Todas</option>{% for option in severityOptions %}<option value="{{ option.value }}"{% if filters.severity == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>
+    </label>
+    <label>Estado
+      <select name="status"><option value="">Todos</option>{% for option in statusOptions %}<option value="{{ option.value }}"{% if filters.status == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>
+    </label>
+    <button type="submit" class="button--ink">Aplicar filtros</button>
+  </form>
+
+  {% if findings.length %}
+    <ol class="finding-list" aria-label="Hallazgos">
+      {% for finding in findings %}
+        <li class="finding-row severity-border--{{ finding.severity }}">
+          <div class="finding-row__index">{{ loop.index | string | truncate(2, true, '') }}</div>
+          <div class="finding-row__body">
+            <div class="finding-row__meta"><span class="severity-tag severity--{{ finding.severity }}">{{ finding.severity }}</span><span class="status-tag">{{ finding.status }}</span></div>
+            <h2><a href="/projects/{{ project.id }}/findings/{{ finding.id }}">{{ finding.title }}</a></h2>
+            <p>Origen: {{ finding.origin }}{% if finding.filePath %} · <code>{{ finding.filePath }}{% if finding.lineNumber %}:{{ finding.lineNumber }}{% endif %}</code>{% endif %}</p>
+          </div>
+          <time datetime="{{ finding.updatedAt }}">{{ finding.updatedAt }}</time>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <section class="empty-state">
+      <span class="empty-state__number" aria-hidden="true">∅</span>
+      <div><h2>No hay hallazgos en este proyecto</h2><p>{% if filters.query or filters.severity or filters.status %}Ninguno coincide con estos filtros.{% else %}Anota una sospecha cuando tengas evidencia concreta que revisar.{% endif %}</p></div>
+    </section>
+  {% endif %}
+{% endblock %}

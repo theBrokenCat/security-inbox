@@ -1,0 +1,35 @@
+{
+  "name": "security-inbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "web": "tsx src/web/server.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "seed": "tsx src/demo/seed.ts",
+    "demo": "tsx src/demo/demo.ts"
+  },
+  "dependencies": {
+    "@fastify/formbody": "9.0.0",
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.3",
+    "nunjucks": "3.2.4",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.13.3",
+    "@types/nunjucks": "3.2.6",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

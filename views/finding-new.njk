@@ -1,0 +1,36 @@
+{% extends "base.njk" %}
+{% block title %}Nueva sospecha · {{ project.name }}{% endblock %}
+{% block content %}
+  <nav class="breadcrumbs" aria-label="Migas de pan"><a href="/">Proyectos</a><span>/</span><a href="/projects/{{ project.id }}/findings">{{ project.name }}</a><span>/</span><span>Nueva sospecha</span></nav>
+  <section class="page-heading page-heading--compact"><div><p class="eyebrow">Entrada manual</p><h1>Anotar sospecha</h1><p class="lede">Describe lo observado. El registro nace sin revisar y no confirma una vulnerabilidad.</p></div><span class="folio">{{ project.name }}</span></section>
+
+  {% if duplicates !== null %}
+    <aside class="duplicate-box" aria-live="polite">
+      <p class="eyebrow">Precheck terminado</p>
+      {% if duplicates.length %}
+        <h2>{{ duplicates.length }} posible{% if duplicates.length != 1 %}s{% endif %} parecido{% if duplicates.length != 1 %}s{% endif %}</h2>
+        <ul>{% for duplicate in duplicates %}<li><a href="/projects/{{ project.id }}/findings/{{ duplicate.id }}">{{ duplicate.title }}</a> — {% if duplicate.match == 'exact' %}Coincidencia exacta{% else %}Coincidencia similar{% endif %}</li>{% endfor %}</ul>
+      {% else %}
+        <h2>Sin coincidencias cercanas</h2><p>Puedes registrar la sospecha, pero el precheck no garantiza que sea única.</p>
+      {% endif %}
+    </aside>
+  {% endif %}
+
+  <form method="post" action="/projects/{{ project.id }}/findings" class="paper-panel finding-form">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <input type="hidden" name="idempotencyKey" value="{{ form.idempotencyKey }}">
+    <label class="span-2">Título <input name="title" required maxlength="200" value="{{ form.title or '' }}" autocomplete="off"></label>
+    <label>Gravedad <select name="severity" required>{% for option in severityOptions %}<option value="{{ option.value }}"{% if form.severity == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></label>
+    <label>Origen <input name="origin" required maxlength="200" value="{{ form.origin or '' }}" autocomplete="off"></label>
+    <label class="span-2">Descripción <textarea name="description" required maxlength="10000" rows="6">{{ form.description or '' }}</textarea></label>
+    <label>Archivo <span class="optional">opcional</span><input name="filePath" maxlength="1000" value="{{ form.filePath or '' }}" autocomplete="off"></label>
+    <label>Línea <span class="optional">opcional</span><input name="lineNumber" type="number" min="1" max="10000000" value="{{ form.lineNumber or '' }}"></label>
+    <label class="span-2">Commit <span class="optional">opcional</span><input name="commitRef" maxlength="200" value="{{ form.commitRef or '' }}" autocomplete="off"></label>
+    <label class="span-2">Evidencia <textarea name="evidence" required maxlength="10000" rows="6">{{ form.evidence or '' }}</textarea></label>
+    <label class="span-2">Recomendación <span class="optional">opcional</span><textarea name="recommendation" maxlength="5000" rows="4">{{ form.recommendation or '' }}</textarea></label>
+    <div class="form-actions span-2">
+      <button type="submit" formaction="/projects/{{ project.id }}/findings/precheck" class="button--paper">Comprobar parecidos</button>
+      <button type="submit">Registrar como sospecha</button>
+    </div>
+  </form>
+{% endblock %}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Security Inbox{% endblock %}</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+  <header class="masthead">
+    <a class="brand" href="/" aria-label="Security Inbox, proyectos">
+      <span class="brand__mark" aria-hidden="true">SI</span>
+      <span><strong>Security Inbox</strong><small>cuaderno local de sospechas</small></span>
+    </a>
+    <span class="local-badge">Solo local</span>
+  </header>
+  <main id="contenido" class="page-shell">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">Una sospecha registrada no es una vulnerabilidad confirmada.</footer>
+</body>
+</html>

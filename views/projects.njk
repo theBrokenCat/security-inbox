@@ -1,0 +1,57 @@
+{% extends "base.njk" %}
+{% block title %}Proyectos · Security Inbox{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <p class="eyebrow">Índice de investigación</p>
+      <h1>Proyectos</h1>
+      <p class="lede">Separa las sospechas por contexto y revisa primero lo que aún no tiene criterio humano.</p>
+    </div>
+    <span class="folio">{{ projects | length }} cuadernos</span>
+  </section>
+
+  {% if projects.length %}
+    <section class="project-grid" aria-label="Proyectos registrados">
+      {% for project in projects %}
+        <article class="project-card">
+          <header>
+            <p class="eyebrow">Proyecto</p>
+            <h2><a href="/projects/{{ project.id }}/findings">{{ project.name }}</a></h2>
+          </header>
+          <p>{{ project.description }}</p>
+          {% if project.repositoryReference %}<code class="repo-ref">{{ project.repositoryReference }}</code>{% endif %}
+          <ul class="severity-ledger" aria-label="Hallazgos abiertos por gravedad">
+            {% for severity in severityOptions %}
+              <li class="severity-ledger__item severity--{{ severity.value }}" data-count-severity="{{ severity.value }}">
+                <span>{{ severity.label }}</span>
+                <strong>{{ project.openCounts[severity.value] }}</strong>
+              </li>
+            {% endfor %}
+          </ul>
+          <footer class="project-card__footer">
+            <strong>{{ project.openTotal }} abiertos</strong>
+            <span data-pending-review-count="{{ project.pendingReviewCount }}">{{ project.pendingReviewCount }} sin revisar</span>
+            <a class="text-link" href="/projects/{{ project.id }}/findings">Abrir cuaderno →</a>
+          </footer>
+        </article>
+      {% endfor %}
+    </section>
+  {% else %}
+    <section class="empty-state">
+      <span class="empty-state__number" aria-hidden="true">00</span>
+      <div><h2>Todavía no hay proyectos</h2><p>Crea el primero para empezar a reunir sospechas sin mezclarlas.</p></div>
+    </section>
+  {% endif %}
+
+  <section class="paper-panel paper-panel--narrow" aria-labelledby="new-project-title">
+    <p class="eyebrow">Nueva ficha</p>
+    <h2 id="new-project-title">Crear proyecto</h2>
+    <form method="post" action="/projects" class="form-grid">
+      <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+      <label>Nombre <input name="name" required maxlength="120" autocomplete="off"></label>
+      <label>Descripción <textarea name="description" required maxlength="2000" rows="4"></textarea></label>
+      <label>Repositorio <span class="optional">opcional</span><input name="repositoryReference" maxlength="500" autocomplete="off"></label>
+      <button type="submit">Crear proyecto</button>
+    </form>
+  </section>
+{% endblock %}
