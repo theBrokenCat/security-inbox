@@ -21,3 +21,43 @@
   seleccione una carpeta, derive el nombre y conserve `directoryPath`.
 - La UI acordada es profesional neutra: sans-serif, canvas gris, superficies
   blancas y navy; evita metáforas de papel, serif y color decorativo dominante.
+
+---
+
+> A partir de aquí, plantilla fija (`~/z_dev/scaffolding/templates/lessons.md`).
+> Las entradas anteriores son del formato antiguo y se conservan como estaban.
+
+## L001 — Reconstruir una tabla referenciada en SQLite · 2026-09-06
+- **Contexto**: migración v3, añadir `projects.owner_id NOT NULL REFERENCES users(id)`.
+- **Síntoma**: primero `FOREIGN KEY constraint failed` en el COMMIT pese a que
+  `foreign_key_check` devolvía vacío; después `no such table: main.projects_legacy`
+  al insertar hallazgos.
+- **Causa**: dos comportamientos distintos, ambos verificados con una sonda y no
+  deducidos. (1) `DROP TABLE` sobre una tabla referenciada incrementa el contador
+  de violaciones diferidas y nada lo decrementa, así que el COMMIT falla aunque los
+  datos sean consistentes. (2) `legacy_alter_table` solo impide que
+  `ALTER TABLE RENAME` reescriba las claves foráneas de otras tablas si
+  `foreign_keys` está OFF — y better-sqlite3 las activa en cada conexión.
+- **Decisión/Fix**: migrar con `foreign_keys = OFF` (se activan al terminar),
+  renombrar la tabla vieja **antes** de crear la nueva y borrarla cuando ya nadie
+  la referencia, y demostrar la integridad con `foreign_key_check` tras el commit.
+- **Regla**: ante un comportamiento de SQLite que condiciona el diseño, escribe
+  una sonda de cuatro líneas y mídelo antes de elegir el orden de la migración.
+- **Aplica en**: storage, sqlite, migraciones, better-sqlite3
+- **Promocionar**: no — es específico de SQLite y ya vive en `AGENTS.md`.
+
+## L002 — El perfil de trabajo lo marca el usuario, no el skill · 2026-09-06
+- **Contexto**: tras aprobar el diseño de proyectos por usuario, el skill
+  `brainstorming` terminaba invocando `writing-plans`.
+- **Síntoma**: el usuario cortó con «no crees el plan. implementa todo sin
+  pararte».
+- **Causa**: seguí el estado terminal del skill como si fuera obligatorio, cuando
+  el usuario ya tenía el diseño aprobado y quería ejecución directa.
+- **Decisión/Fix**: implementar del tirón, conservando las verificaciones
+  (tests, typecheck, navegador) pero sin plan intermedio ni gates por tarea.
+- **Regla**: el estado terminal de un skill de proceso cede ante una instrucción
+  explícita del usuario sobre el ritmo; conserva las verificaciones, no la
+  ceremonia.
+- **Aplica en**: proceso, skills, brainstorming, writing-plans
+- **Promocionar**: sí, regla global — vale para cualquier proyecto, no solo este.
+

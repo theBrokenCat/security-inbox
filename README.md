@@ -80,15 +80,20 @@ mkdir -p data
 # chown -R 1000:1000 data
 docker compose build app
 docker compose run --rm -T app
-docker compose up -d web
+SECURITY_INBOX_USER=guzman docker compose up -d web
 curl --fail http://127.0.0.1:3300/
 docker compose ps
 ```
 
+`SECURITY_INBOX_USER` es obligatoria la primera vez que se arranca sobre una
+base creada antes del esquema 3: sin ella la migración se detiene en lugar de
+inventar un dueño para los proyectos existentes.
+
 La raíz Docker predeterminada es `/root/Proyectos`. Para otro host:
 
 ```sh
-SECURITY_INBOX_PROJECTS_HOST_ROOT=/ruta/absoluta/Proyectos docker compose up -d web
+SECURITY_INBOX_PROJECTS_HOST_ROOT=/ruta/absoluta/Proyectos \
+  SECURITY_INBOX_USER=guzman docker compose up -d web
 ```
 
 Para probar MCP por stdio, conserva `-T` para no asignar un pseudo-terminal:
