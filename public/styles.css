@@ -35,7 +35,7 @@ button, .button-link {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  min-height: 2.65rem;
+  min-height: 2.75rem;
   padding: .62rem 1rem;
   color: #fff;
   background: var(--navy);
@@ -140,8 +140,8 @@ p { margin: .45rem 0 0; }
 .repo-ref { display: block; margin-top: .8rem; overflow-wrap: anywhere; color: #475467; }
 .severity-ledger {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: .4rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .5rem;
   margin: auto 0 1rem;
   padding: 1.4rem 0 0;
   list-style: none;
@@ -177,7 +177,7 @@ p { margin: .45rem 0 0; }
 .finding-row { display: grid; grid-template-columns: 1fr auto; gap: 1rem; padding: 1rem 1.15rem; border-bottom: 1px solid var(--border); border-left: 4px solid; }
 .finding-row:last-child { border-bottom: 0; }
 .finding-row__body h2 { margin: .4rem 0; font-size: 1.12rem; }
-.finding-row__body h2 a { color: var(--ink); text-decoration: none; }
+.finding-row__body h2 a { display: inline-flex; align-items: center; min-height: 2.75rem; color: var(--ink); text-decoration: none; }
 .finding-row__body p, .finding-row > time { color: var(--muted); font-size: .84rem; }
 .finding-row__meta { display: flex; flex-wrap: wrap; gap: .4rem; }
 .severity-tag, .status-tag { padding: .2rem .45rem; border-radius: 999px; font-weight: 650; }
@@ -203,6 +203,7 @@ p { margin: .45rem 0 0; }
 .case-meta dd { margin: .3rem 0 0; overflow-wrap: anywhere; }
 .case-section { padding: 1.25rem 0; border-bottom: 1px solid var(--border); }
 .preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+.action-section { margin-top: 2rem; }
 .action-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; margin-top: 1rem; }
 summary { display: flex; align-items: center; min-height: 2.75rem; font-size: 1.05rem; font-weight: 700; cursor: pointer; }
 .action-stack { display: grid; gap: 1.4rem; }
@@ -228,13 +229,15 @@ summary { display: flex; align-items: center; min-height: 2.75rem; font-size: 1.
 .directory-list small { margin-top: .15rem; color: var(--muted); overflow-wrap: anywhere; }
 .folder-icon { position: relative; width: 1.2rem; height: .85rem; background: #d9e6f5; border: 1px solid #9bb3cf; border-radius: 2px; }
 .folder-icon::before { position: absolute; bottom: 100%; left: -.05rem; width: .55rem; height: .25rem; content: ""; background: #d9e6f5; border: 1px solid #9bb3cf; border-bottom: 0; border-radius: 2px 2px 0 0; }
-.selection-panel { display: grid; grid-template-columns: 1fr 1.3fr auto; align-items: end; gap: 1rem; padding: 1.2rem; background: #f8fafc; border-top: 1px solid var(--border); }
-.selection-panel strong { display: block; overflow-wrap: anywhere; }
+.selection-panel { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: .75rem 1rem; padding: 1.2rem; background: #f8fafc; border-top: 1px solid var(--border); }
+.selection-panel__info { grid-column: 1 / -1; }
+.selection-panel strong { display: block; margin-top: .2rem; font-size: 1.05rem; overflow-wrap: anywhere; }
 .directory-list-title { padding: 1rem 1.2rem .6rem; color: #475467; font-size: .86rem; }
 
 @media (max-width: 760px) {
   .page-heading, .case-file__header, .directory-picker__header { align-items: stretch; flex-direction: column; }
-  .filter-bar, .finding-form, .action-grid, .case-meta, .selection-panel { grid-template-columns: 1fr; }
+  .filter-bar, .finding-form, .action-grid, .selection-panel { grid-template-columns: 1fr; }
+  .case-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span-2 { grid-column: auto; }
   .finding-row { grid-template-columns: 1fr; }
   .history > ol > li { grid-template-columns: 1fr; }
@@ -244,7 +247,7 @@ summary { display: flex; align-items: center; min-height: 2.75rem; font-size: 1.
   .masthead { align-items: flex-start; }
   .local-badge { display: none; }
   .page-shell { width: min(100% - 1rem, 1120px); }
-  .severity-ledger { grid-template-columns: repeat(2, 1fr); }
+  .severity-ledger, .case-meta { grid-template-columns: repeat(2, 1fr); }
   .form-actions { align-items: stretch; flex-direction: column; }
 }
 

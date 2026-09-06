@@ -23,7 +23,7 @@
       <form method="post" action="/projects/register" class="selection-panel">
         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
         <input type="hidden" name="relativePath" value="{{ listing.relativePath }}">
-        <div><span class="field-hint">Carpeta seleccionada</span><strong>{{ listing.displayPath }}</strong></div>
+        <div class="selection-panel__info"><span class="field-hint">Carpeta seleccionada</span><strong>{{ listing.displayPath }}</strong></div>
         <label>Descripción <span class="optional">opcional</span><textarea name="description" maxlength="2000" rows="3" placeholder="Añade contexto útil para ti y para los agentes"></textarea></label>
         <button type="submit">Seleccionar esta carpeta</button>
       </form>
