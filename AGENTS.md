@@ -14,6 +14,12 @@
   `src/storage`; web y MCP son adaptadores separados.
 - `src/projects/directory-manager.ts` es la única frontera de exploración del
   filesystem; web y MCP deben usarla y nunca resolver rutas por su cuenta.
+- La identidad del usuario se resuelve **en el adaptador**, nunca en `src/core`:
+  la web lee la cookie `si_user` y el MCP lee `SECURITY_INBOX_USER`. El servicio
+  solo acepta un `ownerId` ya resuelto.
+- `projects.owner_id` es `NOT NULL` con clave foránea a `users`. La migración v3
+  reconstruye la tabla; SQLite obliga a hacerlo con `foreign_keys = OFF` para que
+  `legacy_alter_table` impida reescribir la clave foránea de `findings`.
 - `src/demo` contiene únicamente fixtures sintéticos y el recorrido local del
   servicio. La base por defecto es `data/security-inbox.sqlite`.
 - La imagen incluye `views` y `public` para que web y sus pruebas funcionen;
@@ -34,3 +40,7 @@
 - No leer ni modificar Penthos desde este proyecto.
 - Los agentes identifican proyectos por `directoryPath` y `projectId`; nunca por
   nombre solamente. No se implementa borrado en esta iteración.
+- El usuario es atribución, no autorización: no escribir código que trate la
+  cookie ni `SECURITY_INBOX_USER` como una comprobación de permisos.
+- El color se toma de un conjunto cerrado validado en el `CHECK` y viaja al CSS
+  como clase, nunca como `style` inline: la CSP es `style-src 'self'`.

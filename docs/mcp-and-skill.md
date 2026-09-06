@@ -9,7 +9,7 @@ npm install
 npm run build
 ```
 
-El entrypoint compilado es `dist/src/mcp/server.js`. El proceso habla MCP por stdin/stdout; stdout queda reservado al protocolo. No uses `npm run mcp`: npm imprime su banner en stdout antes de iniciar el servidor. `SECURITY_INBOX_DB` selecciona el archivo SQLite. `SECURITY_INBOX_PROJECTS_ROOT` limita los directorios navegables y por defecto usa el directorio de lanzamiento; `SECURITY_INBOX_PROJECTS_DISPLAY_ROOT` permite guardar la ruta real cuando la raíz accesible está montada en otra ubicación.
+El entrypoint compilado es `dist/src/mcp/server.js`. El proceso habla MCP por stdin/stdout; stdout queda reservado al protocolo. No uses `npm run mcp`: npm imprime su banner en stdout antes de iniciar el servidor. `SECURITY_INBOX_DB` selecciona el archivo SQLite. `SECURITY_INBOX_PROJECTS_ROOT` limita los directorios navegables y por defecto usa el directorio de lanzamiento; `SECURITY_INBOX_PROJECTS_DISPLAY_ROOT` permite guardar la ruta real cuando la raíz accesible está montada en otra ubicación. `SECURITY_INBOX_USER` declara el slug del usuario dueño de los proyectos que registre este agente: sin él, las lecturas siguen funcionando con `scope: "all"` pero `register_project` devuelve `USER_REQUIRED`.
 
 ## Conexión nativa
 
@@ -29,14 +29,17 @@ Configuración equivalente para un cliente con `mcpServers`:
       "args": ["/absolute/path/to/security-inbox/dist/src/mcp/server.js"],
       "env": {
         "SECURITY_INBOX_DB": "/absolute/path/to/security-inbox.sqlite",
-        "SECURITY_INBOX_PROJECTS_ROOT": "/absolute/path/to/projects"
+        "SECURITY_INBOX_PROJECTS_ROOT": "/absolute/path/to/projects",
+        "SECURITY_INBOX_USER": "guzman"
       }
     }
   }
 }
 ```
 
-Reinicia o recarga el cliente después de guardar la configuración. La conexión correcta muestra nueve herramientas: `list_projects`, `browse_project_directories`, `register_project`, `register_finding`, `list_findings`, `get_finding`, `update_finding`, `update_finding_status` y `add_finding_note`.
+Reinicia o recarga el cliente después de guardar la configuración. La conexión correcta muestra diez herramientas: `list_projects`, `list_users`, `browse_project_directories`, `register_project`, `register_finding`, `list_findings`, `get_finding`, `update_finding`, `update_finding_status` y `add_finding_note`.
+
+`list_projects` devuelve por defecto solo los proyectos de `SECURITY_INBOX_USER`; usa `scope: "all"` para ver el inventario completo. El dueño nunca se pasa como argumento: sale de la configuración del proceso.
 
 Flujo recomendado para agentes:
 

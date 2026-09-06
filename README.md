@@ -2,7 +2,8 @@
 
 Aplicación local para registrar y revisar sospechas de seguridad por proyecto.
 Registrar una sospecha no la confirma ni corrige una vulnerabilidad. Web y MCP
-usan el mismo servicio y la misma base SQLite.
+usan el mismo servicio y la misma base SQLite. Cada proyecto pertenece a un
+usuario, que sirve para atribuir trabajo y no para restringir el acceso.
 
 ## Requisitos e instalación
 
@@ -24,6 +25,31 @@ La web registra proyectos seleccionando carpetas. En ejecución nativa,
 `SECURITY_INBOX_PROJECTS_ROOT` limita el árbol navegable y por defecto es el
 directorio desde el que se lanza la aplicación.
 
+## Usuarios
+
+Cada proyecto tiene un usuario dueño. **No hay inicio de sesión y esto no es
+control de acceso**: la web guarda tu elección en la cookie `si_user`, cambiar de
+usuario es un clic y nadie verifica nada. Security Inbox confía en la red por la
+que llegas — está pensado para un homelab detrás de VPN, sin exposición externa.
+Quien pueda abrir la web puede ponerse cualquier nombre.
+
+Lo que sí aporta: separa tus proyectos de los del resto, firma lo que registra
+cada agente y evita que dos personas se pisen el listado.
+
+- La primera visita muestra **¿Quién eres?** y permite crear el primer usuario.
+- El identificador (`slug`) admite minúsculas, números y guiones.
+- La lista de proyectos abre en **Míos** y el conmutador **Todos** enseña el
+  inventario completo con la etiqueta de su dueño.
+- Los agentes MCP declaran su identidad en `SECURITY_INBOX_USER`. Sin esa
+  variable pueden leer (`list_projects` con `scope: "all"`, `list_users`) pero
+  `register_project` falla con `USER_REQUIRED` en vez de crear un proyecto
+  huérfano.
+
+Si actualizas una base creada antes del esquema 3, define
+`SECURITY_INBOX_DEFAULT_USER` con el slug que hereda los proyectos existentes;
+la migración crea ese usuario y se los asigna. Sobre una base vacía no hace
+falta.
+
 ## Comandos locales
 
 ```sh
@@ -35,8 +61,9 @@ npm run build
 npm run web
 ```
 
-`npm run web` escucha en loopback en ejecución nativa. El seed cubre las cinco
-gravedades y cinco estados, conserva los UUID y no duplica eventos al repetirse.
+`npm run web` escucha en loopback en ejecución nativa. El seed crea dos usuarios
+sintéticos, cubre las cinco gravedades y cinco estados, conserva los UUID y no
+duplica eventos al repetirse.
 `npm run demo` añade un hallazgo sintético de recorrido y comprueba que el retry
 con `demo-route-fixed-key` devuelve el mismo UUID.
 
@@ -87,9 +114,11 @@ de contenedores y red, pero conserva `./data`.
 
 ## Flujo operativo completo
 
-1. Arranca `web`, pulsa **Añadir proyecto** y selecciona una carpeta; el nombre
-   y la ubicación se registran automáticamente.
-2. Un agente comienza con `list_projects`. Si falta la carpeta, usa
+1. Arranca `web`, elige quién eres (o crea el usuario), pulsa **Añadir proyecto**
+   y selecciona una carpeta; el nombre y la ubicación se registran
+   automáticamente y el proyecto queda a tu nombre.
+2. Un agente comienza con `list_projects`, que por defecto solo devuelve los
+   proyectos de `SECURITY_INBOX_USER`. Si falta la carpeta, usa
    `browse_project_directories` y `register_project`; después conserva el UUID.
 3. Lista hallazgos, comprueba candidatos parecidos y
    registra uno con una clave de idempotencia estable.
@@ -110,8 +139,10 @@ El destino operativo previsto es `arturo-dev:/root/Proyectos/security-inbox`.
 
 ## Limitaciones verificadas
 
-- Es una aplicación local de una sola persona; no incluye autenticación ni
-  despliegue público.
+- No incluye autenticación ni despliegue público. El usuario es atribución, no
+  control de acceso: la cookie es editable y nadie comprueba identidades.
+- Los hallazgos no tienen dueño propio; cuelgan del proyecto y el campo `origin`
+  registra quién los reportó.
 - Las entradas son sospechas, no confirmaciones automáticas, detección externa
   ni remediación.
 - MCP se sirve por stdio y requiere un cliente configurado; `-T` es necesario
@@ -121,6 +152,8 @@ El destino operativo previsto es `arturo-dev:/root/Proyectos/security-inbox`.
 - No se incluyen secretos ni credenciales en fixtures, imagen, Compose o docs.
 - No se siguen symlinks que salgan de la raíz configurada y la web nunca lee el
   contenido de los archivos del proyecto.
+- La interfaz reserva la escala rojo-naranja-verde para la gravedad; el color de
+  usuario usa tonos aparte para que un dueño nunca se lea como un riesgo.
 
 Para apagar el stack: `docker compose down`. La eliminación de `./data` es una
 acción separada y borra la persistencia local.
