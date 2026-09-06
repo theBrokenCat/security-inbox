@@ -8,7 +8,7 @@ description: Use the Security Inbox MCP tools to search, record, review, and upd
 Use Security Inbox only as the finding inbox; it does not confirm or fix vulnerabilities.
 
 1. Start with `list_projects`, which returns the projects of the user configured in
-   `SECURITY_INBOX_USER`. Match the stored `directoryPath` and never guess `projectId`. Pass
+   `SECURITY_INBOX_USER`, worst open severity first. Match the stored `directoryPath` and never guess `projectId`. Pass
    `scope: "all"` only when you need a project owned by someone else, and say so to the user.
 2. If the directory is not registered, use `browse_project_directories` from the configured root and pass its exact `relativePath` to `register_project`. Do not invent or escape the allowed path. The new project is owned by the configured user; you cannot choose an owner, and `USER_REQUIRED` means `SECURITY_INBOX_USER` is unset — ask the user instead of guessing a slug.
 3. Search that project with `list_findings.query` before registering anything. Review likely matches instead of silently duplicating them.

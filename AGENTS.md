@@ -44,3 +44,11 @@
   cookie ni `SECURITY_INBOX_USER` como una comprobación de permisos.
 - El color se toma de un conjunto cerrado validado en el `CHECK` y viaja al CSS
   como clase, nunca como `style` inline: la CSP es `style-src 'self'`.
+- Los iconos viven en `views/icons.njk` como SVG en línea y son decorativos
+  (`aria-hidden`): con `img-src 'self'` cualquier sprite o fuente externa
+  fallaría sin aviso, y el texto debe seguir llevando el significado.
+- El único borrado del proyecto es el de un usuario sin proyectos. `owner_id` es
+  `NOT NULL`, así que traspasar es requisito previo, nunca una consecuencia
+  automática.
+- La portada separa lo crítico y alto en una cola propia; el orden de
+  `listProjects` lo decide la peor gravedad abierta, no el nombre.

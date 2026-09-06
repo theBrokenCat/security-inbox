@@ -40,6 +40,12 @@ cada agente y evita que dos personas se pisen el listado.
 - El identificador (`slug`) admite minúsculas, números y guiones.
 - La lista de proyectos abre en **Míos** y el conmutador **Todos** enseña el
   inventario completo con la etiqueta de su dueño.
+- Los proyectos con hallazgos **críticos o altos** abiertos se sacan a una cola
+  *Requiere atención ahora*, encima del resto y con otra presentación; dentro de
+  la lista mandan la peor gravedad y el volumen, no el orden alfabético.
+- `/users` lista quién puede figurar como dueño. Un proyecto se traspasa desde su
+  propia página, y un usuario solo se elimina cuando ya no tiene proyectos: el
+  dueño es obligatorio en la base y nunca puede quedar apuntando a nadie.
 - Los agentes MCP declaran su identidad en `SECURITY_INBOX_USER`. Sin esa
   variable pueden leer (`list_projects` con `scope: "all"`, `list_users`) pero
   `register_project` falla con `USER_REQUIRED` en vez de crear un proyecto
@@ -61,9 +67,11 @@ npm run build
 npm run web
 ```
 
-`npm run web` escucha en loopback en ejecución nativa. El seed crea dos usuarios
-sintéticos, cubre las cinco gravedades y cinco estados, conserva los UUID y no
-duplica eventos al repetirse.
+`npm run web` escucha en loopback en ejecución nativa. El seed no inventa
+personas: asigna sus proyectos a `SECURITY_INBOX_USER`, en su defecto al primer
+usuario registrado, y solo crea el usuario `demo` si la base está vacía. Cubre
+las cinco gravedades y cinco estados, conserva los UUID y no duplica eventos al
+repetirse.
 `npm run demo` añade un hallazgo sintético de recorrido y comprueba que el retry
 con `demo-route-fixed-key` devuelve el mismo UUID.
 
@@ -159,6 +167,11 @@ El destino operativo previsto es `arturo-dev:/root/Proyectos/security-inbox`.
   contenido de los archivos del proyecto.
 - La interfaz reserva la escala rojo-naranja-verde para la gravedad; el color de
   usuario usa tonos aparte para que un dueño nunca se lea como un riesgo.
+- Los iconos son SVG en línea, sin fuentes ni sprites: la CSP es `img-src 'self'`
+  y cualquier recurso externo fallaría en silencio. Son decorativos y el texto
+  que acompañan siempre lleva el significado.
+- El borrado se limita a usuarios sin proyectos. No hay borrado de proyectos ni
+  de hallazgos.
 
 Para apagar el stack: `docker compose down`. La eliminación de `./data` es una
 acción separada y borra la persistencia local.
