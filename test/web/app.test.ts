@@ -452,7 +452,10 @@ describe('Security Inbox web adapter', () => {
     expect(css.body).toContain('--canvas:');
     expect(css.body).toContain('"Avenir Next"');
     expect(css.body).toContain('outline: 3px solid var(--focus)');
-    expect(css.body).toContain('--medium: #704b00');
+    expect(css.body).toContain('--medium: #7a5300');
+    // The severity scale stays reserved for severity: user accents are separate tokens.
+    expect(css.body).toContain('--violeta: #7b45d6');
+    expect(css.body).toMatch(/@media \(prefers-color-scheme: dark\)/);
     expect(css.body).toMatch(/summary\s*\{[^}]*min-height:\s*2\.75rem/s);
     expect(readFileSync(join(process.cwd(), 'views/project-new.njk'), 'utf8'))
       .not.toContain('Puedes seleccionar esta ubicación');

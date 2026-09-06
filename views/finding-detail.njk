@@ -6,7 +6,7 @@
   <article class="case-file severity-border--{{ finding.severity }}">
     <header class="case-file__header">
       <div><p class="section-label">Hallazgo · {{ finding.id }}</p><h1>{{ finding.title }}</h1></div>
-      <div class="finding-row__meta"><span class="severity-tag severity--{{ finding.severity }}">{{ severityLabels[finding.severity] }}</span><span class="status-tag" data-status="{{ finding.status }}">{{ statusLabels[finding.status] }}</span></div>
+      <div class="finding-row__meta"><span class="severity-tag severity-tag--{{ finding.severity }}">{{ severityLabels[finding.severity] }}</span><span class="status-tag status-tag--{{ finding.status }}" data-status="{{ finding.status }}">{{ statusLabels[finding.status] }}</span></div>
     </header>
     <dl class="case-meta">
       <div><dt>Origen</dt><dd>{{ finding.origin }}</dd></div>

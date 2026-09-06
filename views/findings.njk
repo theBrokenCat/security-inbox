@@ -25,7 +25,7 @@
       {% for finding in findings %}
         <li class="finding-row severity-border--{{ finding.severity }}">
           <div class="finding-row__body">
-            <div class="finding-row__meta"><span class="severity-tag severity--{{ finding.severity }}">{{ severityLabels[finding.severity] }}</span><span class="status-tag">{{ statusLabels[finding.status] }}</span></div>
+            <div class="finding-row__meta"><span class="severity-tag severity-tag--{{ finding.severity }}">{{ severityLabels[finding.severity] }}</span><span class="status-tag status-tag--{{ finding.status }}">{{ statusLabels[finding.status] }}</span></div>
             <h2><a href="/projects/{{ project.id }}/findings/{{ finding.id }}">{{ finding.title }}</a></h2>
             <p>Origen: {{ finding.origin }}{% if finding.filePath %} · <code>{{ finding.filePath }}{% if finding.lineNumber %}:{{ finding.lineNumber }}{% endif %}</code>{% endif %}</p>
           </div>
