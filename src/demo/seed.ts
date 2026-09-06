@@ -12,7 +12,6 @@ type DemoProjectDefinition = {
   name: string;
   description: string;
   repositoryReference: string;
-  ownerSlug: string;
 };
 
 type DemoUserDefinition = {
@@ -32,23 +31,27 @@ export type DemoSeedResult = {
   findings: FindingDetail[];
 };
 
-const userDefinitions: DemoUserDefinition[] = [
-  { slug: 'demo-alba', name: 'Alba (demo)', color: 'violeta' },
-  { slug: 'demo-bruno', name: 'Bruno (demo)', color: 'turquesa' },
-];
+// The seed used to invent two people, which littered a real database with users nobody knew.
+// It now owns its fixtures with whoever is already there: the configured user, else the first
+// registered one, and only creates a user at all when the database has none.
+const fallbackUser: DemoUserDefinition = { slug: 'demo', name: 'Demo', color: 'violeta' };
+
+function resolveSeedOwner(service: SecurityInboxService, ownerSlug?: string): User {
+  const requested = (ownerSlug ?? process.env.SECURITY_INBOX_USER ?? '').trim();
+  if (requested) return service.registerUser({ slug: requested }).user;
+  return service.listUsers()[0] ?? service.registerUser(fallbackUser).user;
+}
 
 const projectDefinitions: DemoProjectDefinition[] = [
   {
     name: 'Security Inbox API',
     description: 'Synthetic API project for the local security inbox demo.',
     repositoryReference: 'demo://security-inbox-api',
-    ownerSlug: 'demo-alba',
   },
   {
     name: 'Security Inbox Web',
     description: 'Synthetic web project for the local security inbox demo.',
     repositoryReference: 'demo://security-inbox-web',
-    ownerSlug: 'demo-bruno',
   },
 ];
 
@@ -147,9 +150,7 @@ function ensureProject(
   const existing = service.listProjects().find(
     ({ repositoryReference }) => repositoryReference === definition.repositoryReference,
   );
-  if (existing) return existing;
-  const { ownerSlug: _ownerSlug, ...fields } = definition;
-  return service.createProject({ ...fields, ownerId });
+  return existing ?? service.createProject({ ...definition, ownerId });
 }
 
 function ensureStatus(
@@ -179,17 +180,14 @@ function ensureFinding(
   return ensureStatus(service, registered, definition.targetStatus);
 }
 
-export function seedDemo(databasePath?: string): DemoSeedResult {
+export function seedDemo(databasePath?: string, ownerSlug?: string): DemoSeedResult {
   const service = new SecurityInboxService(databasePath);
   try {
-    // registerUser is idempotent by slug, so repeating the seed reuses the same users.
-    const users = userDefinitions.map((definition) => service.registerUser(definition).user);
-    const usersBySlug = new Map(users.map((user) => [user.slug, user]));
-    const projects = projectDefinitions.map((definition) => {
-      const owner = usersBySlug.get(definition.ownerSlug);
-      if (!owner) throw new Error(`Missing demo user: ${definition.ownerSlug}`);
-      return ensureProject(service, definition, owner.id);
-    });
+    const owner = resolveSeedOwner(service, ownerSlug);
+    const users = [owner];
+    const projects = projectDefinitions.map(
+      (definition) => ensureProject(service, definition, owner.id),
+    );
     const projectsByName = new Map(projects.map((project) => [project.name, project]));
     const findings = findingDefinitions.map((definition) => {
       const project = projectsByName.get(definition.projectName);
@@ -205,6 +203,7 @@ export function seedDemo(databasePath?: string): DemoSeedResult {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const result = seedDemo(process.env.SECURITY_INBOX_DB);
   process.stdout.write(
-    `Seeded ${result.users.length} users, ${result.projects.length} projects and ${result.findings.length} findings.\n`,
+    `Seeded ${result.projects.length} projects and ${result.findings.length} findings`
+    + ` owned by ${result.users[0]!.slug}.\n`,
   );
 }
