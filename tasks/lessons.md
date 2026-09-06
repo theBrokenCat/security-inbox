@@ -19,8 +19,11 @@
   `root:root`: las lecturas pasan, pero una nueva escritura falla.
 - El alta de proyectos no pertenece a la portada: usa una página dedicada que
   seleccione una carpeta, derive el nombre y conserve `directoryPath`.
-- La UI acordada es profesional neutra: sans-serif, canvas gris, superficies
-  blancas y navy; evita metáforas de papel, serif y color decorativo dominante.
+- La UI acordada es profesional neutra: sans-serif, sin metáforas de papel ni
+  serif, y sin color decorativo. **Superada el 2026-09-06 en la parte cromática**
+  (ver L003): el color pasa a tener función y se admite paleta viva, pero siguen
+  vigentes el sans-serif, la ausencia de metáforas de papel y la prohibición de
+  color puramente decorativo.
 
 ---
 
@@ -60,4 +63,21 @@
   ceremonia.
 - **Aplica en**: proceso, skills, brainstorming, writing-plans
 - **Promocionar**: sí, regla global — vale para cualquier proyecto, no solo este.
+
+## L003 — El color con función supera al color neutro · 2026-09-06
+- **Contexto**: rediseño pedido por el usuario, «una interfaz más atractiva y
+  colorida», sobre una app donde el color ya era señal de gravedad.
+- **Síntoma**: la lección anterior prohibía «color decorativo dominante», lo que
+  leído literalmente bloqueaba cualquier paleta viva.
+- **Causa**: la lección mezclaba dos cosas distintas — prohibir adorno (sigue
+  siendo válido) y prohibir color (nunca fue el objetivo).
+- **Decisión/Fix**: la gravedad conserva **en exclusiva** la escala
+  rojo-naranja-verde en tres pesos; los acentos de usuario viven en una familia
+  cromática aparte; los estados llevan forma además de color. Los guardarraíles
+  mecánicos (`rotate(`, gradientes repetidos, `Georgia`) siguen intactos y se
+  respetaron rehaciendo las formas con bordes.
+- **Regla**: antes de añadir color a una interfaz, comprueba qué significa ya el
+  color en ella; si una escala tiene dueño, lo nuevo va en otra familia cromática.
+- **Aplica en**: frontend, css, diseño, accesibilidad
+- **Promocionar**: no — depende de que esta app use el color como señal.
 

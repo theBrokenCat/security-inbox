@@ -81,8 +81,11 @@ export async function startWebServer({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  void startWebServer().catch(() => {
+  void startWebServer().catch((error: unknown) => {
+    // The reason reaches the logs: a startup failure here can require operator action, such as
+    // setting SECURITY_INBOX_DEFAULT_USER before a database with projects can reach version 3.
     console.error('Security Inbox web server could not start.');
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });
 }

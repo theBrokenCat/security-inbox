@@ -17,8 +17,12 @@ function buildServer() {
   return server;
 }
 
-function reportFailure() {
+// stdout stays reserved for the protocol, so the reason goes to stderr where a client shows it.
+function reportFailure(error?: unknown) {
   process.stderr.write('Security Inbox MCP failed to start.\n');
+  if (error !== undefined) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  }
   process.exitCode = 1;
 }
 
@@ -28,6 +32,6 @@ try {
   process.stdin.once('end', shutdown);
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
-} catch {
-  reportFailure();
+} catch (error) {
+  reportFailure(error);
 }
