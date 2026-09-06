@@ -4,6 +4,8 @@ import { dirname, resolve } from 'node:path';
 
 import BetterSqlite3 from 'better-sqlite3';
 
+import { userSlugSchema } from '../core/validation.js';
+
 export type SqliteDatabase = InstanceType<typeof BetterSqlite3>;
 
 const currentSchemaVersion = 3;
@@ -204,17 +206,20 @@ function backfillOwnerId(
   const projectCount = database.prepare('SELECT count(*) AS total FROM projects_legacy').get() as { total: number };
   if (projectCount.total === 0) return null;
 
-  const slug = (defaultUserSlug ?? '').trim();
-  if (!slug) {
+  if (!(defaultUserSlug ?? '').trim()) {
     throw new Error(
       'SECURITY_INBOX_DEFAULT_USER is required to migrate existing projects to schema version 3',
     );
   }
-  if (slug.length > 40 || !/^[a-z0-9-]+$/.test(slug)) {
+  // Normalised through the one schema the whole application uses, so a capitalised value in
+  // the environment lands on the same slug the web would have created.
+  const parsedSlug = userSlugSchema.safeParse(defaultUserSlug);
+  if (!parsedSlug.success) {
     throw new Error(
       'SECURITY_INBOX_DEFAULT_USER must be 1-40 characters of lowercase letters, digits or hyphens',
     );
   }
+  const slug = parsedSlug.data;
 
   const id = randomUUID();
   database.prepare(`
@@ -287,6 +292,11 @@ export function openDatabase(
         }
         if (currentVersion !== currentSchemaVersion) {
           throw new Error(`Unsupported database schema version ${currentVersion}; expected ${currentSchemaVersion}`);
+        }
+        // Checked inside the transaction as well as after it: a violation found only after the
+        // commit would leave a migrated database that every later open skips in silence.
+        if ((database.pragma('foreign_key_check') as unknown[]).length > 0) {
+          throw new Error(`Migration to schema version ${currentSchemaVersion} left dangling foreign keys`);
         }
       }).immediate();
       database.pragma('legacy_alter_table = OFF');

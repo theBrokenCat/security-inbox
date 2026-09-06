@@ -106,13 +106,47 @@ test('keeps owner_id NOT NULL after the rebuild', () => {
   database.close();
 });
 
-test('refuses to migrate existing projects without a default user', () => {
+test('refuses to migrate existing projects without a default user and rolls back cleanly', () => {
   const path = temporaryDatabase();
-  seedOneProjectWithFinding(path);
+  const { projectId, findingId } = seedOneProjectWithFinding(path);
   downgradeToV2(path);
 
   expect(() => new SecurityInboxService(path, { defaultUserSlug: '' }))
     .toThrow(/SECURITY_INBOX_DEFAULT_USER/);
+
+  // The failed attempt must leave no half-migrated state behind.
+  const database = new BetterSqlite3(path);
+  const tables = (database.prepare(
+    "SELECT name FROM sqlite_schema WHERE type = 'table'",
+  ).all() as Array<{ name: string }>).map(({ name }) => name);
+  expect(database.pragma('user_version', { simple: true })).toBe(2);
+  expect(tables).not.toContain('users');
+  expect(tables).not.toContain('projects_legacy');
+  expect((database.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>)
+    .map(({ name }) => name)).not.toContain('owner_id');
+  expect(database.pragma('integrity_check', { simple: true })).toBe('ok');
+  expect(database.pragma('foreign_key_check')).toEqual([]);
+  expect(database.prepare('SELECT count(*) AS total FROM projects').get()).toEqual({ total: 1 });
+  database.close();
+
+  // And a later attempt with a usable slug still migrates, history intact.
+  const service = new SecurityInboxService(path, { defaultUserSlug: 'guzman' });
+  expect(service.listProjects()[0]!.owner.slug).toBe('guzman');
+  expect(service.getFinding({ projectId, findingId }).history).toHaveLength(1);
+  service.close();
+});
+
+test('normalises the default user slug the way the rest of the application does', () => {
+  const path = temporaryDatabase();
+  seedOneProjectWithFinding(path);
+  downgradeToV2(path);
+
+  // A capitalised environment value must land on the same slug the web would have created,
+  // otherwise the migration, the web and MCP each disagree about who the owner is.
+  const service = new SecurityInboxService(path, { defaultUserSlug: '  Guzman  ' });
+  expect(service.listProjects()[0]!.owner.slug).toBe('guzman');
+  expect(service.requireUserBySlug('guzman').id).toBe(service.listProjects()[0]!.ownerId);
+  service.close();
 });
 
 test('migrates an empty database without needing a default user', () => {

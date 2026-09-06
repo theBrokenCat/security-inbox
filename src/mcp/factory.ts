@@ -12,6 +12,7 @@ import {
   listFindingsInputSchema,
   registerProjectDirectoryInputSchema,
   registerFindingInputSchema,
+  userSlugSchema,
   updateFindingInputSchema,
   updateFindingStatusInputSchema,
 } from '../core/validation.js';
@@ -218,7 +219,9 @@ export function createSecurityInboxMcpServer(
   const listProjectsToolSchema = z.object({
     scope: z.enum(['mine', 'all']).optional(),
   }).strict();
-  const configuredSlug = options.userSlug?.trim() || undefined;
+  // Normalised through the shared schema so SECURITY_INBOX_USER tolerates the same input the
+  // web accepts; an unusable value is treated as unset rather than silently missing its user.
+  const configuredSlug = userSlugSchema.safeParse(options.userSlug).data;
   // The owner is taken from the configured user, never from tool input.
   const registerProjectToolSchema = registerProjectDirectoryInputSchema.omit({ ownerId: true });
 
