@@ -10,7 +10,9 @@ function buildServer() {
     accessibleRoot: process.env.SECURITY_INBOX_PROJECTS_ROOT,
     displayRoot: process.env.SECURITY_INBOX_PROJECTS_DISPLAY_ROOT,
   });
-  const server = createSecurityInboxMcpServer(service, directories);
+  const server = createSecurityInboxMcpServer(service, directories, {
+    userSlug: process.env.SECURITY_INBOX_USER,
+  });
   server.server.onclose = () => { service.close(); };
   return server;
 }

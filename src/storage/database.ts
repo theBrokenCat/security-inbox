@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
@@ -5,7 +6,7 @@ import BetterSqlite3 from 'better-sqlite3';
 
 export type SqliteDatabase = InstanceType<typeof BetterSqlite3>;
 
-const currentSchemaVersion = 2;
+const currentSchemaVersion = 3;
 const uuidIdCheck = `
   length(id) = 36
   AND id GLOB '????????-????-????-????-????????????'
@@ -107,6 +108,66 @@ const migrationV2 = `
     ON projects(directory_path) WHERE directory_path IS NOT NULL;
 `;
 
+const migrationV3Users = `
+  CREATE TABLE users (
+    id TEXT PRIMARY KEY CHECK (${uuidIdCheck}),
+    slug TEXT NOT NULL UNIQUE CHECK (
+      length(slug) BETWEEN 1 AND 40 AND slug NOT GLOB '*[^a-z0-9-]*'
+    ),
+    name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 80),
+    color TEXT NOT NULL CHECK (
+      color IN ('violeta', 'turquesa', 'ambar', 'coral', 'indigo', 'jade')
+    ),
+    created_at TEXT NOT NULL
+  ) STRICT;
+`;
+
+// SQLite cannot add a NOT NULL column that carries a REFERENCES clause, so projects is
+// rebuilt. legacy_alter_table stops the rename from rewriting the findings foreign key, which
+// keeps pointing at the name "projects" and so resolves to the new table.
+//
+// The old table is renamed away before the new one is created, rather than dropped after it:
+// dropping a table that findings still references increments SQLite's deferred-violation
+// counter, and nothing decrements it again, so the transaction would fail at COMMIT even
+// though foreign_key_check reports a consistent database.
+const migrationV3ProjectsRename = `
+  ALTER TABLE projects RENAME TO projects_legacy
+`;
+
+const migrationV3ProjectsCreate = `
+  CREATE TABLE projects (
+    id TEXT PRIMARY KEY CHECK (${uuidIdCheck}),
+    name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 120),
+    description TEXT NOT NULL CHECK (length(trim(description)) BETWEEN 1 AND 2000),
+    repository_reference TEXT CHECK (
+      repository_reference IS NULL OR length(trim(repository_reference)) BETWEEN 1 AND 500
+    ),
+    directory_path TEXT CHECK (
+      directory_path IS NULL OR length(trim(directory_path)) BETWEEN 1 AND 4096
+    ),
+    owner_id TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL CHECK (updated_at >= created_at)
+  ) STRICT;
+`;
+
+const migrationV3ProjectsCopy = `
+  INSERT INTO projects (
+    id, name, description, repository_reference, directory_path, owner_id, created_at, updated_at
+  )
+  SELECT id, name, description, repository_reference, directory_path, ?, created_at, updated_at
+  FROM projects_legacy
+`;
+
+const migrationV3ProjectsSwap = `
+  DROP TABLE projects_legacy;
+
+  CREATE UNIQUE INDEX idx_projects_directory_path
+    ON projects(directory_path) WHERE directory_path IS NOT NULL;
+  CREATE INDEX idx_projects_owner_updated
+    ON projects(owner_id, updated_at DESC);
+`;
+
 const walRetryDelays = [10, 25, 50, 100, 200];
 const walWaitSignal = new Int32Array(new SharedArrayBuffer(4));
 
@@ -127,7 +188,46 @@ function enableWriteAheadLogging(database: SqliteDatabase): void {
   }
 }
 
-export function openDatabase(databasePath?: string): SqliteDatabase {
+export type OpenDatabaseOptions = {
+  defaultUserSlug?: string;
+};
+
+const defaultUserColor = 'violeta';
+
+// Schema version 3 makes projects.owner_id NOT NULL. A database that already holds projects
+// therefore needs one user to inherit them, named by SECURITY_INBOX_DEFAULT_USER. A database
+// with no projects needs nothing: the copy moves zero rows.
+function backfillOwnerId(
+  database: SqliteDatabase,
+  defaultUserSlug: string | undefined,
+): string | null {
+  const projectCount = database.prepare('SELECT count(*) AS total FROM projects_legacy').get() as { total: number };
+  if (projectCount.total === 0) return null;
+
+  const slug = (defaultUserSlug ?? '').trim();
+  if (!slug) {
+    throw new Error(
+      'SECURITY_INBOX_DEFAULT_USER is required to migrate existing projects to schema version 3',
+    );
+  }
+  if (slug.length > 40 || !/^[a-z0-9-]+$/.test(slug)) {
+    throw new Error(
+      'SECURITY_INBOX_DEFAULT_USER must be 1-40 characters of lowercase letters, digits or hyphens',
+    );
+  }
+
+  const id = randomUUID();
+  database.prepare(`
+    INSERT INTO users (id, slug, name, color, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, slug, slug, defaultUserColor, new Date().toISOString());
+  return id;
+}
+
+export function openDatabase(
+  databasePath?: string,
+  options: OpenDatabaseOptions = {},
+): SqliteDatabase {
   const configuredPath = databasePath ?? process.env.SECURITY_INBOX_DB ?? 'data/security-inbox.sqlite';
   const path = configuredPath === ':memory:' ? configuredPath : resolve(configuredPath);
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -135,7 +235,6 @@ export function openDatabase(databasePath?: string): SqliteDatabase {
   const database = new BetterSqlite3(path);
   try {
     database.pragma('busy_timeout = 5000');
-    database.pragma('foreign_keys = ON');
 
     const version = database.pragma('user_version', { simple: true }) as number;
     if (version > currentSchemaVersion) {
@@ -143,6 +242,14 @@ export function openDatabase(databasePath?: string): SqliteDatabase {
     }
     enableWriteAheadLogging(database);
     if (version < currentSchemaVersion) {
+      // Migrations run with foreign keys disabled, as SQLite's own table-rebuild recipe
+      // requires: only then does legacy_alter_table stop ALTER TABLE RENAME from rewriting
+      // the REFERENCES clauses of other tables. Integrity is proven with foreign_key_check
+      // once the transaction has committed.
+      // better-sqlite3 enables foreign keys on every connection, so they are turned off here
+      // explicitly. PRAGMA foreign_keys is a no-op inside a transaction, hence before it.
+      database.pragma('foreign_keys = OFF');
+      database.pragma('legacy_alter_table = ON');
       database.transaction(() => {
         let currentVersion = database.pragma('user_version', { simple: true }) as number;
         if (currentVersion === 0) {
@@ -161,11 +268,35 @@ export function openDatabase(databasePath?: string): SqliteDatabase {
           database.pragma('user_version = 2');
           currentVersion = 2;
         }
+        if (currentVersion === 2) {
+          try {
+            database.exec(migrationV3Users);
+            database.exec(migrationV3ProjectsRename);
+            database.exec(migrationV3ProjectsCreate);
+            const ownerId = backfillOwnerId(
+              database,
+              options.defaultUserSlug ?? process.env.SECURITY_INBOX_DEFAULT_USER,
+            );
+            database.prepare(migrationV3ProjectsCopy).run(ownerId);
+            database.exec(migrationV3ProjectsSwap);
+          } finally {
+            database.pragma('legacy_alter_table = OFF');
+          }
+          database.pragma('user_version = 3');
+          currentVersion = 3;
+        }
         if (currentVersion !== currentSchemaVersion) {
           throw new Error(`Unsupported database schema version ${currentVersion}; expected ${currentSchemaVersion}`);
         }
       }).immediate();
+      database.pragma('legacy_alter_table = OFF');
+      const violations = database.pragma('foreign_key_check') as unknown[];
+      if (violations.length > 0) {
+        throw new Error(`Migration to schema version ${currentSchemaVersion} left dangling foreign keys`);
+      }
     }
+
+    database.pragma('foreign_keys = ON');
     return database;
   } catch (error) {
     database.close();

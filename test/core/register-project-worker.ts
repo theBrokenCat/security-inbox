@@ -5,7 +5,10 @@ if (!databasePath || !serializedInput) throw new Error('database path and input 
 
 const service = new SecurityInboxService(databasePath);
 try {
-  const result = service.registerProjectDirectory(JSON.parse(serializedInput));
+  const result = service.registerProjectDirectory({
+    ...JSON.parse(serializedInput),
+    ownerId: service.registerUser({ slug: 'tester', name: 'Tester' }).user.id,
+  });
   process.stdout.write(JSON.stringify({ created: result.created, id: result.project.id }));
 } finally {
   service.close();

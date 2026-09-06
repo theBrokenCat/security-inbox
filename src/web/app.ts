@@ -3,16 +3,19 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import formbody from '@fastify/formbody';
-import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import nunjucks from 'nunjucks';
 
 import { AppError, type SecurityInboxService } from '../core/service.js';
 import {
   FINDING_STATUSES,
   SEVERITIES,
+  USER_COLORS,
   type DirectoryListing,
   type FindingDetail,
   type ProjectSummary,
+  type User,
+  type UserColor,
 } from '../core/types.js';
 import type { ProjectDirectoryManager } from '../projects/directory-manager.js';
 
@@ -27,6 +30,38 @@ type ProjectParams = { projectId: string };
 type FindingParams = ProjectParams & { findingId: string };
 type FindingQuery = { severity?: string; status?: string; query?: string; created?: string; updated?: string };
 type DirectoryQuery = { path?: string };
+type ProjectsQuery = { scope?: string };
+
+const userCookieName = 'si_user';
+const userCookieMaxAge = 60 * 60 * 24 * 365;
+
+// One cookie is not worth a dependency: this reads the single value the app sets itself.
+function readCookie(header: string | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+// No Secure flag: this runs over plain HTTP on loopback behind a VPN, and marking it Secure
+// would stop the cookie from being stored at all.
+function userCookie(slug: string): string {
+  return [
+    `${userCookieName}=${encodeURIComponent(slug)}`,
+    'Path=/',
+    `Max-Age=${userCookieMaxAge}`,
+    'HttpOnly',
+    'SameSite=Strict',
+  ].join('; ');
+}
 
 const severityOptions = [
   { value: 'critical', label: 'Crítica' },
@@ -93,6 +128,16 @@ const publicErrors: Record<AppError['code'], { status: number; title: string; me
     title: 'Directorio no disponible',
     message: 'No podemos acceder a esa carpeta.',
   },
+  USER_NOT_FOUND: {
+    status: 404,
+    title: 'Usuario no encontrado',
+    message: 'Ese usuario ya no existe. Vuelve a elegir quién eres.',
+  },
+  USER_REQUIRED: {
+    status: 400,
+    title: 'Falta elegir usuario',
+    message: 'Elige quién eres antes de registrar o consultar proyectos propios.',
+  },
 };
 
 const csp = [
@@ -122,6 +167,22 @@ function queryText(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') throw new AppError('VALIDATION_ERROR', 'Invalid input');
   return value.trim() || undefined;
+}
+
+// The severity bar is sized here, not in the template: the CSP forbids inline styles, so the
+// proportion has to arrive as a class name from a closed set of 5%% steps.
+function severityBar(project: ProjectSummary): Array<{ severity: string; width: number }> {
+  if (project.openTotal === 0) return [];
+  return SEVERITIES
+    .filter((severity) => project.openCounts[severity] > 0)
+    .map((severity) => ({
+      severity,
+      width: Math.max(5, Math.round((project.openCounts[severity] / project.openTotal) * 20) * 5),
+    }));
+}
+
+function projectView(project: ProjectSummary) {
+  return { ...project, bar: severityBar(project) };
 }
 
 function projectFor(service: SecurityInboxService, projectId: string): ProjectSummary {
@@ -187,6 +248,23 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     eventLabels,
   });
 
+  const currentUser = (request: FastifyRequest): User | undefined => {
+    const slug = readCookie(request.headers.cookie, userCookieName);
+    return slug ? service.findUserBySlug(slug) : undefined;
+  };
+  const requireCurrentUser = (request: FastifyRequest): User => {
+    const user = currentUser(request);
+    if (!user) throw new AppError('USER_REQUIRED', 'No user selected');
+    return user;
+  };
+  // Every page carries the session chrome, so the switcher renders the same everywhere.
+  const renderFor = (request: FastifyRequest, name: string, context: object = {}) => render(name, {
+    ...context,
+    currentUser: currentUser(request) ?? null,
+    users: service.listUsers(),
+    userColors: USER_COLORS,
+  });
+
   app.register(formbody);
 
   app.addHook('onRequest', async (request, reply) => {
@@ -236,13 +314,50 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     .type('text/css; charset=utf-8')
     .send(stylesheet));
 
-  app.get('/', async (_request, reply) => reply.type('text/html; charset=utf-8').send(render('projects.njk', {
-    projects: service.listProjects(),
-  })));
+  app.get<{ Querystring: ProjectsQuery }>('/', async (request, reply) => {
+    const user = currentUser(request);
+    // Rendered in place rather than redirected to, so there is no way to bounce between a
+    // selector and the page that needs it.
+    if (!user) {
+      return reply.type('text/html; charset=utf-8').send(renderFor(request, 'user-select.njk', {
+        hasUsers: service.listUsers().length > 0,
+      }));
+    }
+    const scope = queryText(request.query.scope) === 'all' ? 'all' : 'mine';
+    const projects = scope === 'all'
+      ? service.listProjects({ scope: 'all' })
+      : service.listProjects({ scope: 'mine', ownerId: user.id });
+    return reply.type('text/html; charset=utf-8').send(renderFor(request, 'projects.njk', {
+      projects: projects.map(projectView),
+      scope,
+      allProjectCount: service.listProjects({ scope: 'all' }).length,
+    }));
+  });
+
+  app.get('/users/new', async (request, reply) => reply
+    .type('text/html; charset=utf-8')
+    .send(renderFor(request, 'user-new.njk')));
+
+  app.post<{ Body: FormBody }>('/users', async (request, reply) => {
+    const color = text(request.body, 'color');
+    const name = optionalText(request.body, 'name');
+    const { user } = service.registerUser({
+      slug: text(request.body, 'slug'),
+      ...(name ? { name } : {}),
+      ...(USER_COLORS.includes(color as UserColor) ? { color: color as UserColor } : {}),
+    });
+    return reply.header('set-cookie', userCookie(user.slug)).redirect('/', 303);
+  });
+
+  app.post<{ Body: FormBody }>('/session/user', async (request, reply) => {
+    const user = service.requireUserBySlug(text(request.body, 'slug'));
+    return reply.header('set-cookie', userCookie(user.slug)).redirect('/', 303);
+  });
 
   app.get<{ Querystring: DirectoryQuery }>('/projects/new', async (request, reply) => {
+    requireCurrentUser(request);
     const listing = directories.browse(queryText(request.query.path));
-    return reply.type('text/html; charset=utf-8').send(render('project-new.njk', {
+    return reply.type('text/html; charset=utf-8').send(renderFor(request, 'project-new.njk', {
       listing: directoryView(listing),
     }));
   });
@@ -251,6 +366,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     const result = directories.register({
       relativePath: text(request.body, 'relativePath'),
       description: optionalText(request.body, 'description'),
+      ownerId: requireCurrentUser(request).id,
     });
     return reply.redirect(
       `/projects/${result.project.id}/findings?created=${result.created ? '1' : '0'}`,
@@ -271,7 +387,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
         ...(query ? { query } : {}),
       });
       const created = queryText(request.query.created);
-      return reply.type('text/html; charset=utf-8').send(render('findings.njk', {
+      return reply.type('text/html; charset=utf-8').send(renderFor(request, 'findings.njk', {
         project: projectFor(service, request.params.projectId),
         findings,
         filters: { severity, status, query },
@@ -286,7 +402,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
 
   app.get<{ Params: ProjectParams }>('/projects/:projectId/findings/new', async (request, reply) => {
     const project = projectFor(service, request.params.projectId);
-    return reply.type('text/html; charset=utf-8').send(render('finding-new.njk', {
+    return reply.type('text/html; charset=utf-8').send(renderFor(request, 'finding-new.njk', {
       project,
       form: { idempotencyKey: randomUUID(), severity: 'medium' },
       duplicates: null,
@@ -302,7 +418,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
         projectId: request.params.projectId,
         title: text(form, 'title'),
       });
-      return reply.type('text/html; charset=utf-8').send(render('finding-new.njk', {
+      return reply.type('text/html; charset=utf-8').send(renderFor(request, 'finding-new.njk', {
         project,
         form,
         duplicates,
@@ -344,7 +460,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
           : request.query.updated === '1'
             ? 'Cambios guardados.'
             : undefined;
-      return renderFinding(reply, render, {
+      return renderFinding(reply, (name, data) => renderFor(request, name, data), {
         project: projectFor(service, request.params.projectId),
         finding,
         ...(notice ? { notice } : {}),

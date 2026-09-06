@@ -7,14 +7,40 @@
   <title>{% block title %}Security Inbox{% endblock %}</title>
   <link rel="stylesheet" href="/assets/styles.css">
 </head>
-<body>
+<body class="{% if currentUser %}accent-{{ currentUser.color }}{% else %}accent-neutral{% endif %}">
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
   <header class="masthead">
     <a class="brand" href="/" aria-label="Security Inbox, proyectos">
       <span class="brand__mark" aria-hidden="true">SI</span>
       <span><strong>Security Inbox</strong><small>Gestión local de hallazgos</small></span>
     </a>
-    <span class="local-badge">Entorno local</span>
+    <div class="masthead__session">
+      {% if currentUser %}
+        <details class="user-switcher">
+          <summary aria-label="Cambiar de usuario. Ahora: {{ currentUser.name }}">
+            <span class="user-dot user-dot--{{ currentUser.color }}" aria-hidden="true"></span>
+            <span class="user-switcher__name">{{ currentUser.name }}</span>
+            <span class="user-switcher__caret" aria-hidden="true"></span>
+          </summary>
+          <div class="user-switcher__menu">
+            <p class="user-switcher__note">Identifica tu trabajo. No restringe el acceso.</p>
+            {% for user in users %}
+              {% if user.slug != currentUser.slug %}
+                <form method="post" action="/session/user">
+                  <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                  <input type="hidden" name="slug" value="{{ user.slug }}">
+                  <button type="submit" class="user-switcher__option">
+                    <span class="user-dot user-dot--{{ user.color }}" aria-hidden="true"></span>{{ user.name }}
+                  </button>
+                </form>
+              {% endif %}
+            {% endfor %}
+            <a class="user-switcher__option user-switcher__option--add" href="/users/new">Añadir usuario</a>
+          </div>
+        </details>
+      {% endif %}
+      <span class="local-badge">Entorno local</span>
+    </div>
   </header>
   <main id="contenido" class="page-shell">
     {% block content %}{% endblock %}

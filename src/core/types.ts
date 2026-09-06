@@ -11,8 +11,28 @@ export const FINDING_STATUSES = [
 export type FindingStatus = (typeof FINDING_STATUSES)[number];
 export type FindingEventKind = 'created' | 'edited' | 'status_changed' | 'note';
 
+export const USER_COLORS = ['violeta', 'turquesa', 'ambar', 'coral', 'indigo', 'jade'] as const;
+export type UserColor = (typeof USER_COLORS)[number];
+
+export const PROJECT_SCOPES = ['mine', 'all'] as const;
+export type ProjectScope = (typeof PROJECT_SCOPES)[number];
+
 export type Scalar = string | number | null;
 export type FieldChange = { from: Scalar; to: Scalar };
+
+export type User = {
+  id: string;
+  slug: string;
+  name: string;
+  color: UserColor;
+  createdAt: string;
+};
+export type CreateUserInput = {
+  slug: string;
+  name?: string;
+  color?: UserColor;
+};
+export type RegisterUserResult = { user: User; created: boolean };
 
 export type Project = {
   id: string;
@@ -20,24 +40,33 @@ export type Project = {
   description: string;
   repositoryReference: string | null;
   directoryPath: string | null;
+  ownerId: string;
   createdAt: string;
   updatedAt: string;
 };
 export type SeverityCounts = Record<Severity, number>;
 export type ProjectSummary = Project & {
+  owner: User;
   openCounts: SeverityCounts;
   openTotal: number;
   pendingReviewCount: number;
+  worstOpenSeverity: Severity | null;
+};
+export type ListProjectsInput = {
+  scope?: ProjectScope;
+  ownerId?: string;
 };
 export type CreateProjectInput = {
   name: string;
   description: string;
   repositoryReference?: string | null;
+  ownerId: string;
 };
 export type ResolvedProjectDirectoryInput = {
   name: string;
   description: string;
   directoryPath: string;
+  ownerId: string;
 };
 export type RegisterProjectDirectoryResult = { project: Project; created: boolean };
 
@@ -56,6 +85,7 @@ export type DirectoryListing = {
 export type RegisterProjectDirectoryInput = {
   relativePath: string;
   description?: string | null;
+  ownerId: string;
 };
 
 export type Finding = {
@@ -149,7 +179,9 @@ export type AppErrorCode =
   | 'TERMINAL_NOTE_REQUIRED'
   | 'NO_STATUS_CHANGE'
   | 'DIRECTORY_INVALID'
-  | 'DIRECTORY_UNAVAILABLE';
+  | 'DIRECTORY_UNAVAILABLE'
+  | 'USER_NOT_FOUND'
+  | 'USER_REQUIRED';
 export type PublicAppError = {
   code: AppErrorCode;
   message: string;

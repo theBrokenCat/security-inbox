@@ -30,11 +30,13 @@ const registration = {
 
 describe('validation', () => {
   test('trims valid project and finding input while preserving explicit nulls', () => {
+    const ownerId = '3f7d1a9c-7e64-4a1f-9b0e-2c5d8f4a6b31';
     expect(createProjectInputSchema.parse({
       name: ' Project ',
       description: ' Description ',
       repositoryReference: null,
-    })).toEqual({ name: 'Project', description: 'Description', repositoryReference: null });
+      ownerId,
+    })).toEqual({ name: 'Project', description: 'Description', repositoryReference: null, ownerId });
 
     expect(registerFindingInputSchema.parse(registration)).toEqual({
       ...registration,

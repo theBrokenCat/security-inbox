@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { AppError, SecurityInboxService } from '../../src/core/service.js';
 import type { FindingStatus, RegisterFindingInput, Severity } from '../../src/core/types.js';
+import { testOwnerId } from '../support/owner.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -59,12 +60,12 @@ function registration(
 
 describe('SecurityInboxService', () => {
   test('creates stable UUID projects and lists them by name with non-terminal counts', () => {
-    const zebra = service.createProject({
+    const zebra = service.createProject({ ownerId: testOwnerId(service),
       name: ' Zebra ',
       description: ' Main app ',
       repositoryReference: ' git@example.test:zebra.git ',
     });
-    const alpha = service.createProject({ name: 'Alpha', description: 'API' });
+    const alpha = service.createProject({ ownerId: testOwnerId(service), name: 'Alpha', description: 'API' });
 
     expect(zebra.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(zebra).toMatchObject({
@@ -104,12 +105,12 @@ describe('SecurityInboxService', () => {
   });
 
   test('registers a project directory once and returns the stable project on retry', () => {
-    const first = service.registerProjectDirectory({
+    const first = service.registerProjectDirectory({ ownerId: testOwnerId(service),
       name: 'checkout',
       description: 'Selected directory',
       directoryPath: '/srv/projects/checkout',
     });
-    const retry = service.registerProjectDirectory({
+    const retry = service.registerProjectDirectory({ ownerId: testOwnerId(service),
       name: 'ignored-on-retry',
       description: 'Ignored on retry',
       directoryPath: '/srv/projects/checkout',
@@ -142,8 +143,8 @@ describe('SecurityInboxService', () => {
   }, 15_000);
 
   test('registers all fields, isolates projects, filters, searches and returns detail history', () => {
-    const project = service.createProject({ name: 'One', description: 'First' });
-    const otherProject = service.createProject({ name: 'Two', description: 'Second' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'One', description: 'First' });
+    const otherProject = service.createProject({ ownerId: testOwnerId(service), name: 'Two', description: 'Second' });
     const created = service.registerFinding(registration(project.id, 'one'));
     const second = service.registerFinding(registration(project.id, 'two', {
       title: 'Weak cookie flags',
@@ -185,7 +186,7 @@ describe('SecurityInboxService', () => {
   });
 
   test('edits only mutable fields, records changes and uses the edit note on the same event', () => {
-    const project = service.createProject({ name: 'Project', description: 'Description' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
     const original = service.registerFinding(registration(project.id, 'edit')).finding;
 
     const edited = service.updateFinding({
@@ -255,7 +256,7 @@ describe('SecurityInboxService', () => {
   });
 
   test('leaves timestamps and history unchanged when an edit has no real field changes', () => {
-    const project = service.createProject({ name: 'Project', description: 'Description' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
     const original = service.registerFinding(registration(project.id, 'no-op-edit')).finding;
 
     const unchanged = service.updateFinding({
@@ -270,7 +271,7 @@ describe('SecurityInboxService', () => {
   });
 
   test('records only fields whose values actually changed in a partial edit', () => {
-    const project = service.createProject({ name: 'Project', description: 'Description' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
     const original = service.registerFinding(registration(project.id, 'partial-edit')).finding;
 
     const edited = service.updateFinding({
@@ -291,7 +292,7 @@ describe('SecurityInboxService', () => {
   });
 
   test('adds notes and atomically requires a fresh note for terminal status changes', () => {
-    const project = service.createProject({ name: 'Project', description: 'Description' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
     const original = service.registerFinding(registration(project.id, 'status')).finding;
 
     expectCode(
@@ -354,7 +355,7 @@ describe('SecurityInboxService', () => {
   });
 
   test('returns the same finding for an identical retry and rejects key reuse with another payload', () => {
-    const project = service.createProject({ name: 'Project', description: 'Description' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
     const first = service.registerFinding(registration(project.id, 'same-key'));
     const retry = service.registerFinding(registration(project.id, ' same-key ', { title: ' SQL injection in users endpoint ' }));
 
@@ -370,7 +371,7 @@ describe('SecurityInboxService', () => {
   });
 
   test('serializes the same idempotency key across two database connections', async () => {
-    const project = service.createProject({ name: 'Project', description: 'Description' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
     const input = JSON.stringify(registration(project.id, 'concurrent'));
     const worker = join(process.cwd(), 'test/core/register-worker.ts');
     const run = () => execFileAsync(process.execPath, ['--import', 'tsx', worker, databasePath, input]);
@@ -384,8 +385,8 @@ describe('SecurityInboxService', () => {
   }, 15_000);
 
   test('finds deterministic exact and similar candidates without merging across projects', () => {
-    const project = service.createProject({ name: 'Project', description: 'Description' });
-    const otherProject = service.createProject({ name: 'Other', description: 'Description' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
+    const otherProject = service.createProject({ ownerId: testOwnerId(service), name: 'Other', description: 'Description' });
     const exact = service.registerFinding(registration(project.id, 'exact', {
       title: 'Secret leaked in public logs',
       severity: 'critical',
@@ -416,7 +417,7 @@ describe('SecurityInboxService', () => {
   });
 
   test('persists projects, findings and ordered events after closing and reopening the file', () => {
-    const project = service.createProject({ name: 'Persistent', description: 'Stored on disk' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Persistent', description: 'Stored on disk' });
     const finding = service.registerFinding(registration(project.id, 'persist')).finding;
     service.addFindingNote({ projectId: project.id, findingId: finding.id, note: 'Durable note' });
     service.updateFindingStatus({ projectId: project.id, findingId: finding.id, status: 'resolved', note: 'Done' });
@@ -433,12 +434,89 @@ describe('SecurityInboxService', () => {
   });
 
   test('converts invalid input and missing records to public AppError codes', () => {
-    expectCode(() => service.createProject({ name: '', description: 'x' }), 'VALIDATION_ERROR');
+    expectCode(() => service.createProject({ ownerId: testOwnerId(service), name: '', description: 'x' }), 'VALIDATION_ERROR');
     const missingProject = crypto.randomUUID();
     expectCode(() => service.registerFinding(registration(missingProject, 'missing')), 'PROJECT_NOT_FOUND');
     expectCode(
       () => service.getFinding({ projectId: missingProject, findingId: crypto.randomUUID() }),
       'FINDING_NOT_FOUND',
     );
+  });
+});
+
+describe('users and project ownership', () => {
+  test('registers users idempotently by slug and assigns distinct colors', () => {
+    const first = service.registerUser({ slug: 'Ada ', name: 'Ada' });
+    const repeat = service.registerUser({ slug: 'ada', name: 'Ignored on retry' });
+
+    expect(first.created).toBe(true);
+    expect(repeat.created).toBe(false);
+    expect(repeat.user.id).toBe(first.user.id);
+    expect(repeat.user.name).toBe('Ada');
+    expect(service.listUsers()).toHaveLength(1);
+
+    // Without an explicit color, users cycle through the palette instead of colliding.
+    const second = service.registerUser({ slug: 'bruno' }).user;
+    expect(second.color).not.toBe(first.user.color);
+    expect(second.name).toBe('bruno');
+  });
+
+  test('rejects slugs that would not survive a cookie, a URL or a class name', () => {
+    expectCode(() => service.registerUser({ slug: 'con espacios' }), 'VALIDATION_ERROR');
+    expectCode(() => service.registerUser({ slug: 'acentuación' }), 'VALIDATION_ERROR');
+    expectCode(() => service.registerUser({ slug: '' }), 'VALIDATION_ERROR');
+    expectCode(() => service.registerUser({ slug: 'a'.repeat(41) }), 'VALIDATION_ERROR');
+  });
+
+  test('scopes the project list to one owner without hiding it from the full list', () => {
+    const ada = service.registerUser({ slug: 'ada' }).user;
+    const bruno = service.registerUser({ slug: 'bruno' }).user;
+    service.createProject({ name: 'Ada one', description: 'Hers', ownerId: ada.id });
+    service.createProject({ name: 'Bruno one', description: 'His', ownerId: bruno.id });
+
+    expect(service.listProjects({ scope: 'mine', ownerId: ada.id }).map(({ name }) => name))
+      .toEqual(['Ada one']);
+    expect(service.listProjects({ scope: 'all' }).map(({ name }) => name))
+      .toEqual(['Ada one', 'Bruno one']);
+    expect(service.listProjects().map(({ name }) => name)).toEqual(['Ada one', 'Bruno one']);
+
+    // Every summary carries its owner, so the full list can label what belongs to whom.
+    expect(service.listProjects({ scope: 'all' }).map(({ owner }) => owner.slug))
+      .toEqual(['ada', 'bruno']);
+  });
+
+  test('refuses a scoped list without an owner and a project without a known one', () => {
+    expectCode(() => service.listProjects({ scope: 'mine' }), 'VALIDATION_ERROR');
+    expectCode(
+      () => service.createProject({
+        name: 'Orphan',
+        description: 'No owner',
+        ownerId: '3f7d1a9c-7e64-4a1f-9b0e-2c5d8f4a6b31',
+      }),
+      'USER_NOT_FOUND',
+    );
+    expectCode(() => service.requireUserBySlug('ghost'), 'USER_NOT_FOUND');
+  });
+
+  test('reports the worst open severity per project and ignores closed findings', () => {
+    const ownerId = testOwnerId(service);
+    const project = service.createProject({ name: 'Mixed', description: 'Mixed', ownerId });
+    service.registerFinding(registration(project.id, 'worst-high', { severity: 'high' }));
+    const critical = service.registerFinding(
+      registration(project.id, 'worst-critical', { severity: 'critical' }),
+    ).finding;
+
+    expect(service.listProjects({ scope: 'all' })[0]!.worstOpenSeverity).toBe('critical');
+
+    service.updateFindingStatus({
+      projectId: project.id,
+      findingId: critical.id,
+      status: 'resolved',
+      note: 'Checked against the rebuilt query and confirmed fixed.',
+    });
+
+    const [summary] = service.listProjects({ scope: 'all' });
+    expect(summary!.worstOpenSeverity).toBe('high');
+    expect(summary!.openCounts.critical).toBe(0);
   });
 });

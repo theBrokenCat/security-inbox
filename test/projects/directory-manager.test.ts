@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest';
 
 import { AppError, SecurityInboxService } from '../../src/core/service.js';
 import { ProjectDirectoryManager } from '../../src/projects/directory-manager.js';
+import { testOwnerId } from '../support/owner.js';
 
 let directory: string;
 let root: string;
@@ -75,12 +76,12 @@ test('rejects traversal, absolute paths, the root itself and symlinks outside th
   expectCode(() => manager.browse('\\etc'), 'DIRECTORY_INVALID');
   expectCode(() => manager.browse('\\definitely-not-present'), 'DIRECTORY_INVALID');
   expectCode(() => manager.browse('outside-link'), 'DIRECTORY_INVALID');
-  expectCode(() => manager.register({ relativePath: '' }), 'DIRECTORY_INVALID');
+  expectCode(() => manager.register({ ownerId: testOwnerId(service), relativePath: '' }), 'DIRECTORY_INVALID');
 });
 
 test('derives the name and display path and returns the existing project on retry', () => {
-  const first = manager.register({ relativePath: 'alpha/nested' });
-  const retry = manager.register({ relativePath: 'alpha/nested', description: 'Ignored on retry' });
+  const first = manager.register({ ownerId: testOwnerId(service), relativePath: 'alpha/nested' });
+  const retry = manager.register({ ownerId: testOwnerId(service), relativePath: 'alpha/nested', description: 'Ignored on retry' });
 
   expect(first.created).toBe(true);
   expect(first.project).toMatchObject({
@@ -92,8 +93,8 @@ test('derives the name and display path and returns the existing project on retr
 });
 
 test('canonicalizes an internal symlink to the same stored path and project id', () => {
-  const real = manager.register({ relativePath: 'alpha' });
-  const alias = manager.register({ relativePath: 'inside-link' });
+  const real = manager.register({ ownerId: testOwnerId(service), relativePath: 'alpha' });
+  const alias = manager.register({ ownerId: testOwnerId(service), relativePath: 'inside-link' });
 
   expect(alias).toEqual({ project: real.project, created: false });
   expect(real.project.directoryPath).toBe('/srv/projects/alpha');

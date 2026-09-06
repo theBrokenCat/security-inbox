@@ -3,7 +3,7 @@ import { z, type ZodType } from 'zod';
 
 import { AppError, validationError } from '../core/errors.js';
 import { SecurityInboxService } from '../core/service.js';
-import { FINDING_STATUSES, SEVERITIES, type AppErrorCode } from '../core/types.js';
+import { FINDING_STATUSES, SEVERITIES, USER_COLORS, type AppErrorCode } from '../core/types.js';
 import { ProjectDirectoryManager } from '../projects/directory-manager.js';
 import {
   addFindingNoteInputSchema,
@@ -25,6 +25,8 @@ const publicMessages: Record<AppErrorCode, string> = {
   NO_STATUS_CHANGE: 'Finding status is unchanged.',
   DIRECTORY_INVALID: 'Directory is outside the configured project root.',
   DIRECTORY_UNAVAILABLE: 'Directory is unavailable.',
+  USER_NOT_FOUND: 'SECURITY_INBOX_USER does not match a registered user.',
+  USER_REQUIRED: 'Set SECURITY_INBOX_USER to the slug of a registered user before writing.',
 };
 
 const uuidSchema = z.string().uuid();
@@ -32,16 +34,26 @@ const timestampSchema = z.string().datetime();
 const countSchema = z.number().int().nonnegative();
 const severitySchema = z.enum(SEVERITIES);
 const statusSchema = z.enum(FINDING_STATUSES);
+const userSchema = z.object({
+  id: uuidSchema,
+  slug: z.string(),
+  name: z.string(),
+  color: z.enum(USER_COLORS),
+  createdAt: timestampSchema,
+});
 const projectSchema = z.object({
   id: uuidSchema,
   name: z.string(),
   description: z.string(),
   repositoryReference: z.string().nullable(),
   directoryPath: z.string().nullable(),
+  ownerId: uuidSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
 const projectSummarySchema = projectSchema.extend({
+  owner: userSchema,
+  worstOpenSeverity: severitySchema.nullable(),
   openCounts: z.object({
     critical: countSchema,
     high: countSchema,
@@ -113,6 +125,8 @@ const errorSchema = z.object({
       'NO_STATUS_CHANGE',
       'DIRECTORY_INVALID',
       'DIRECTORY_UNAVAILABLE',
+      'USER_NOT_FOUND',
+      'USER_REQUIRED',
       'INTERNAL_ERROR',
     ]),
     message: z.string(),
@@ -155,6 +169,7 @@ const registerProjectOutputSchema = z.union([
   z.object({ project: projectSchema, created: z.boolean() }),
   errorSchema,
 ]);
+const listUsersOutputSchema = z.union([z.object({ users: z.array(userSchema) }), errorSchema]);
 
 function result(structuredContent: Record<string, unknown>, isError = false) {
   return {
@@ -188,18 +203,51 @@ function handle<T>(schema: ZodType<T>, input: unknown, operation: (value: T) => 
   }
 }
 
+export type McpServerOptions = {
+  /** Slug of the configured user, normally from SECURITY_INBOX_USER. */
+  userSlug?: string;
+};
+
 export function createSecurityInboxMcpServer(
   service: SecurityInboxService,
   directories: ProjectDirectoryManager,
+  options: McpServerOptions = {},
 ): McpServer {
   const server = new McpServer({ name: 'security-inbox', version: '0.1.0' });
   const emptyInputSchema = z.object({}).strict();
+  const listProjectsToolSchema = z.object({
+    scope: z.enum(['mine', 'all']).optional(),
+  }).strict();
+  const configuredSlug = options.userSlug?.trim() || undefined;
+  // The owner is taken from the configured user, never from tool input.
+  const registerProjectToolSchema = registerProjectDirectoryInputSchema.omit({ ownerId: true });
+
+  // Resolved per call rather than at startup, so a user registered from the web after this
+  // process began is picked up without a restart.
+  const requireOwnerId = (): string => {
+    if (!configuredSlug) {
+      throw new AppError('USER_REQUIRED', 'SECURITY_INBOX_USER is not set');
+    }
+    return service.requireUserBySlug(configuredSlug).id;
+  };
 
   server.registerTool('list_projects', {
-    description: 'List projects first to identify the correct stable project id and directory path.',
-    inputSchema: advertisedInput(emptyInputSchema),
+    description:
+      'List projects first to identify the correct stable project id and directory path. '
+      + 'Defaults to the projects owned by the configured user; pass scope "all" to see every project.',
+    inputSchema: advertisedInput(listProjectsToolSchema),
     outputSchema: listProjectsOutputSchema,
-  }, async (input) => handle(emptyInputSchema, input, () => ({ projects: service.listProjects() })));
+  }, async (input) => handle(listProjectsToolSchema, input, (value) => {
+    const scope = value.scope ?? (configuredSlug ? 'mine' : 'all');
+    if (scope === 'all') return { projects: service.listProjects({ scope: 'all' }) };
+    return { projects: service.listProjects({ scope: 'mine', ownerId: requireOwnerId() }) };
+  }));
+
+  server.registerTool('list_users', {
+    description: 'List the registered users so project ownership can be read without guessing.',
+    inputSchema: advertisedInput(emptyInputSchema),
+    outputSchema: listUsersOutputSchema,
+  }, async (input) => handle(emptyInputSchema, input, () => ({ users: service.listUsers() })));
 
   server.registerTool('browse_project_directories', {
     description: 'Browse directories allowed by this Security Inbox instance before registering a project.',
@@ -210,10 +258,15 @@ export function createSecurityInboxMcpServer(
   })));
 
   server.registerTool('register_project', {
-    description: 'Register a selected directory as a project; its name and stored path are derived automatically.',
-    inputSchema: advertisedInput(registerProjectDirectoryInputSchema),
+    description:
+      'Register a selected directory as a project owned by the configured user; '
+      + 'its name and stored path are derived automatically.',
+    inputSchema: advertisedInput(registerProjectToolSchema),
     outputSchema: registerProjectOutputSchema,
-  }, async (input) => handle(registerProjectDirectoryInputSchema, input, (value) => directories.register(value)));
+  }, async (input) => handle(registerProjectToolSchema, input, (value) => directories.register({
+    ...value,
+    ownerId: requireOwnerId(),
+  })));
 
   server.registerTool('register_finding', {
     description: 'Register an unconfirmed security finding after checking for existing findings.',

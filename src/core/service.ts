@@ -14,16 +14,23 @@ import type {
   FindingStatus,
   FindingSummary,
   ListFindingsInput,
+  ListProjectsInput,
   Project,
   ProjectSummary,
   RegisterProjectDirectoryResult,
   RegisterFindingInput,
   RegisterFindingResult,
+  RegisterUserResult,
   Scalar,
+  User,
+  UserColor,
 } from './types.js';
+import { USER_COLORS } from './types.js';
 import {
   addFindingNoteInputSchema,
   createProjectInputSchema,
+  createUserInputSchema,
+  listProjectsInputSchema,
   duplicateSearchInputSchema,
   findingIdentitySchema,
   listFindingsInputSchema,
@@ -32,7 +39,7 @@ import {
   updateFindingInputSchema,
   updateFindingStatusInputSchema,
 } from './validation.js';
-import { openDatabase } from '../storage/database.js';
+import { openDatabase, type OpenDatabaseOptions } from '../storage/database.js';
 import { SecurityInboxRepository } from '../storage/repository.js';
 
 export { AppError } from './errors.js';
@@ -86,16 +93,48 @@ function timestampAfter(previous?: string): string {
 export class SecurityInboxService {
   private readonly repository: SecurityInboxRepository;
 
-  constructor(databasePath?: string) {
-    this.repository = new SecurityInboxRepository(openDatabase(databasePath));
+  constructor(databasePath?: string, options?: OpenDatabaseOptions) {
+    this.repository = new SecurityInboxRepository(openDatabase(databasePath, options));
   }
 
   close(): void {
     this.repository.close();
   }
 
+  registerUser(input: { slug: string; name?: string; color?: UserColor }): RegisterUserResult {
+    const value = parse(createUserInputSchema, input);
+    return this.repository.immediate(() => {
+      const existing = this.repository.findUserBySlug(value.slug);
+      if (existing) return { user: existing, created: false };
+      const user: User = {
+        id: randomUUID(),
+        slug: value.slug,
+        name: value.name ?? value.slug,
+        color: value.color ?? USER_COLORS[this.repository.countUsers() % USER_COLORS.length]!,
+        createdAt: timestampAfter(),
+      };
+      this.repository.insertUser(user);
+      return { user, created: true };
+    });
+  }
+
+  listUsers(): User[] {
+    return this.repository.listUsers();
+  }
+
+  findUserBySlug(slug: string): User | undefined {
+    return this.repository.findUserBySlug(slug);
+  }
+
+  requireUserBySlug(slug: string): User {
+    const user = this.repository.findUserBySlug(slug);
+    if (!user) throw new AppError('USER_NOT_FOUND', 'User not found');
+    return user;
+  }
+
   createProject(input: CreateProjectInput): Project {
     const value = parse(createProjectInputSchema, input);
+    this.requireUser(value.ownerId);
     const now = timestampAfter();
     const project: Project = {
       id: randomUUID(),
@@ -103,6 +142,7 @@ export class SecurityInboxService {
       description: value.description,
       repositoryReference: value.repositoryReference ?? null,
       directoryPath: null,
+      ownerId: value.ownerId,
       createdAt: now,
       updatedAt: now,
     };
@@ -114,9 +154,11 @@ export class SecurityInboxService {
     name: string;
     description: string;
     directoryPath: string;
+    ownerId: string;
   }): RegisterProjectDirectoryResult {
     const value = parse(resolvedProjectDirectoryInputSchema, input);
     return this.repository.immediate(() => {
+      this.requireUser(value.ownerId);
       const existing = this.repository.findProjectByDirectoryPath(value.directoryPath);
       if (existing) return { project: existing, created: false };
       const now = timestampAfter();
@@ -126,6 +168,7 @@ export class SecurityInboxService {
         description: value.description,
         repositoryReference: null,
         directoryPath: value.directoryPath,
+        ownerId: value.ownerId,
         createdAt: now,
         updatedAt: now,
       };
@@ -134,8 +177,8 @@ export class SecurityInboxService {
     });
   }
 
-  listProjects(): ProjectSummary[] {
-    return this.repository.listProjects();
+  listProjects(input: ListProjectsInput = {}): ProjectSummary[] {
+    return this.repository.listProjects(parse(listProjectsInputSchema, input));
   }
 
   registerFinding(input: RegisterFindingInput): RegisterFindingResult {
@@ -365,6 +408,12 @@ export class SecurityInboxService {
         return matchOrder || right.score - left.score || right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id);
       })
       .slice(0, 5);
+  }
+
+  private requireUser(userId: string): void {
+    if (!this.repository.findUserById(userId)) {
+      throw new AppError('USER_NOT_FOUND', 'User not found');
+    }
   }
 
   private requireProject(projectId: string): void {

@@ -5,12 +5,24 @@ import type {
   FindingStatus,
   FindingSummary,
   ListFindingsInput,
+  ListProjectsInput,
   Project,
   ProjectSummary,
   Severity,
   SeverityCounts,
+  User,
+  UserColor,
 } from '../core/types.js';
+import { SEVERITIES } from '../core/types.js';
 import type { SqliteDatabase } from './database.js';
+
+type UserRow = {
+  id: string;
+  slug: string;
+  name: string;
+  color: UserColor;
+  created_at: string;
+};
 
 type ProjectRow = {
   id: string;
@@ -18,11 +30,16 @@ type ProjectRow = {
   description: string;
   repository_reference: string | null;
   directory_path: string | null;
+  owner_id: string;
   created_at: string;
   updated_at: string;
 };
 
 type ProjectSummaryRow = ProjectRow & {
+  owner_slug: string;
+  owner_name: string;
+  owner_color: UserColor;
+  owner_created_at: string;
   critical_count: number;
   high_count: number;
   medium_count: number;
@@ -81,9 +98,24 @@ function toProject(row: ProjectRow): Project {
     description: row.description,
     repositoryReference: row.repository_reference,
     directoryPath: row.directory_path,
+    ownerId: row.owner_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function toUser(row: UserRow): User {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    color: row.color,
+    createdAt: row.created_at,
+  };
+}
+
+function worstOpenSeverity(counts: SeverityCounts): Severity | null {
+  return SEVERITIES.find((severity) => counts[severity] > 0) ?? null;
 }
 
 function toFinding(row: FindingRow): Finding {
@@ -136,9 +168,9 @@ export class SecurityInboxRepository {
   insertProject(project: Project): void {
     this.database.prepare(`
       INSERT INTO projects (
-        id, name, description, repository_reference, directory_path, created_at, updated_at
+        id, name, description, repository_reference, directory_path, owner_id, created_at, updated_at
       ) VALUES (
-        @id, @name, @description, @repositoryReference, @directoryPath, @createdAt, @updatedAt
+        @id, @name, @description, @repositoryReference, @directoryPath, @ownerId, @createdAt, @updatedAt
       )
     `).run(project);
   }
@@ -150,10 +182,15 @@ export class SecurityInboxRepository {
     return row ? toProject(row) : undefined;
   }
 
-  listProjects(): ProjectSummary[] {
+  listProjects(input: ListProjectsInput = {}): ProjectSummary[] {
+    const ownerId = input.scope === 'mine' ? input.ownerId ?? null : null;
     const rows = this.database.prepare(`
       SELECT
         p.*,
+        u.slug AS owner_slug,
+        u.name AS owner_name,
+        u.color AS owner_color,
+        u.created_at AS owner_created_at,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'critical' THEN 1 ELSE 0 END) AS critical_count,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'high' THEN 1 ELSE 0 END) AS high_count,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'medium' THEN 1 ELSE 0 END) AS medium_count,
@@ -162,10 +199,12 @@ export class SecurityInboxRepository {
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') THEN 1 ELSE 0 END) AS open_total,
         SUM(CASE WHEN f.status = 'pending_review' THEN 1 ELSE 0 END) AS pending_review_count
       FROM projects p
+      JOIN users u ON u.id = p.owner_id
       LEFT JOIN findings f ON f.project_id = p.id
+      WHERE @ownerId IS NULL OR p.owner_id = @ownerId
       GROUP BY p.id
       ORDER BY p.name COLLATE NOCASE, p.id
-    `).all() as ProjectSummaryRow[];
+    `).all({ ownerId }) as ProjectSummaryRow[];
 
     return rows.map((row) => {
       const openCounts: SeverityCounts = {
@@ -177,11 +216,48 @@ export class SecurityInboxRepository {
       };
       return {
         ...toProject(row),
+        owner: toUser({
+          id: row.owner_id,
+          slug: row.owner_slug,
+          name: row.owner_name,
+          color: row.owner_color,
+          created_at: row.owner_created_at,
+        }),
         openCounts,
         openTotal: row.open_total,
         pendingReviewCount: row.pending_review_count,
+        worstOpenSeverity: worstOpenSeverity(openCounts),
       };
     });
+  }
+
+  insertUser(user: User): void {
+    this.database.prepare(`
+      INSERT INTO users (id, slug, name, color, created_at)
+      VALUES (@id, @slug, @name, @color, @createdAt)
+    `).run(user);
+  }
+
+  findUserBySlug(slug: string): User | undefined {
+    const row = this.database.prepare('SELECT * FROM users WHERE slug = ?').get(slug) as UserRow | undefined;
+    return row ? toUser(row) : undefined;
+  }
+
+  findUserById(id: string): User | undefined {
+    const row = this.database.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+    return row ? toUser(row) : undefined;
+  }
+
+  listUsers(): User[] {
+    const rows = this.database.prepare(
+      'SELECT * FROM users ORDER BY name COLLATE NOCASE, slug',
+    ).all() as UserRow[];
+    return rows.map(toUser);
+  }
+
+  countUsers(): number {
+    const row = this.database.prepare('SELECT count(*) AS total FROM users').get() as { total: number };
+    return row.total;
   }
 
   findIdempotent(projectId: string, idempotencyKey: string): Pick<

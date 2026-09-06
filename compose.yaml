@@ -8,6 +8,10 @@ x-app: &app
     SECURITY_INBOX_CONTAINER: "true"
     SECURITY_INBOX_PROJECTS_ROOT: /projects
     SECURITY_INBOX_PROJECTS_DISPLAY_ROOT: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}
+    # Owner of projects registered over MCP, and the user inherited by projects that predate
+    # schema version 3. Not authentication: see README.
+    SECURITY_INBOX_USER: ${SECURITY_INBOX_USER:-}
+    SECURITY_INBOX_DEFAULT_USER: ${SECURITY_INBOX_DEFAULT_USER:-${SECURITY_INBOX_USER:-}}
   volumes:
     - type: bind
       source: ./data

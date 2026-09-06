@@ -3,6 +3,8 @@ import type {
   FindingStatus,
   Project,
   RegisterFindingInput,
+  User,
+  UserColor,
 } from '../core/types.js';
 import { SecurityInboxService } from '../core/service.js';
 
@@ -10,6 +12,13 @@ type DemoProjectDefinition = {
   name: string;
   description: string;
   repositoryReference: string;
+  ownerSlug: string;
+};
+
+type DemoUserDefinition = {
+  slug: string;
+  name: string;
+  color: UserColor;
 };
 
 type DemoFindingDefinition = Omit<RegisterFindingInput, 'projectId'> & {
@@ -18,20 +27,28 @@ type DemoFindingDefinition = Omit<RegisterFindingInput, 'projectId'> & {
 };
 
 export type DemoSeedResult = {
+  users: User[];
   projects: Project[];
   findings: FindingDetail[];
 };
+
+const userDefinitions: DemoUserDefinition[] = [
+  { slug: 'demo-alba', name: 'Alba (demo)', color: 'violeta' },
+  { slug: 'demo-bruno', name: 'Bruno (demo)', color: 'turquesa' },
+];
 
 const projectDefinitions: DemoProjectDefinition[] = [
   {
     name: 'Security Inbox API',
     description: 'Synthetic API project for the local security inbox demo.',
     repositoryReference: 'demo://security-inbox-api',
+    ownerSlug: 'demo-alba',
   },
   {
     name: 'Security Inbox Web',
     description: 'Synthetic web project for the local security inbox demo.',
     repositoryReference: 'demo://security-inbox-web',
+    ownerSlug: 'demo-bruno',
   },
 ];
 
@@ -122,11 +139,17 @@ const findingDefinitions: DemoFindingDefinition[] = [
   },
 ];
 
-function ensureProject(service: SecurityInboxService, definition: DemoProjectDefinition): Project {
+function ensureProject(
+  service: SecurityInboxService,
+  definition: DemoProjectDefinition,
+  ownerId: string,
+): Project {
   const existing = service.listProjects().find(
     ({ repositoryReference }) => repositoryReference === definition.repositoryReference,
   );
-  return existing ?? service.createProject(definition);
+  if (existing) return existing;
+  const { ownerSlug: _ownerSlug, ...fields } = definition;
+  return service.createProject({ ...fields, ownerId });
 }
 
 function ensureStatus(
@@ -159,14 +182,21 @@ function ensureFinding(
 export function seedDemo(databasePath?: string): DemoSeedResult {
   const service = new SecurityInboxService(databasePath);
   try {
-    const projects = projectDefinitions.map((definition) => ensureProject(service, definition));
+    // registerUser is idempotent by slug, so repeating the seed reuses the same users.
+    const users = userDefinitions.map((definition) => service.registerUser(definition).user);
+    const usersBySlug = new Map(users.map((user) => [user.slug, user]));
+    const projects = projectDefinitions.map((definition) => {
+      const owner = usersBySlug.get(definition.ownerSlug);
+      if (!owner) throw new Error(`Missing demo user: ${definition.ownerSlug}`);
+      return ensureProject(service, definition, owner.id);
+    });
     const projectsByName = new Map(projects.map((project) => [project.name, project]));
     const findings = findingDefinitions.map((definition) => {
       const project = projectsByName.get(definition.projectName);
       if (!project) throw new Error(`Missing demo project: ${definition.projectName}`);
       return ensureFinding(service, project, definition);
     });
-    return { projects, findings };
+    return { users, projects, findings };
   } finally {
     service.close();
   }
@@ -174,5 +204,7 @@ export function seedDemo(databasePath?: string): DemoSeedResult {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const result = seedDemo(process.env.SECURITY_INBOX_DB);
-  process.stdout.write(`Seeded ${result.projects.length} projects and ${result.findings.length} findings.\n`);
+  process.stdout.write(
+    `Seeded ${result.users.length} users, ${result.projects.length} projects and ${result.findings.length} findings.\n`,
+  );
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { FINDING_STATUSES, SEVERITIES } from './types.js';
+import { FINDING_STATUSES, PROJECT_SCOPES, SEVERITIES, USER_COLORS } from './types.js';
 
 const requiredText = (max: number) => z.string().trim().min(1).max(max);
 const optionalText = (max: number) => requiredText(max).nullable().optional();
@@ -8,17 +8,45 @@ const uuid = z.string().uuid();
 
 export const severitySchema = z.enum(SEVERITIES);
 export const findingStatusSchema = z.enum(FINDING_STATUSES);
+export const projectScopeSchema = z.enum(PROJECT_SCOPES);
+export const userColorSchema = z.enum(USER_COLORS);
+
+// The slug is the identity a person types and an agent configures, so it stays narrow enough
+// to be safe in a cookie, a URL and a CSS class name without any further escaping.
+export const userSlugSchema = z.string().trim().toLowerCase().min(1).max(40)
+  .regex(/^[a-z0-9-]+$/, 'Only lowercase letters, digits and hyphens are allowed');
+
+export const createUserInputSchema = z.object({
+  slug: userSlugSchema,
+  name: requiredText(80).optional(),
+  color: userColorSchema.optional(),
+}).strict();
+
+export const listProjectsInputSchema = z.object({
+  scope: projectScopeSchema.optional(),
+  ownerId: uuid.optional(),
+}).strict().superRefine((value, context) => {
+  if (value.scope === 'mine' && !value.ownerId) {
+    context.addIssue({
+      code: 'custom',
+      path: ['ownerId'],
+      message: 'Scope "mine" requires an owner',
+    });
+  }
+});
 
 export const createProjectInputSchema = z.object({
   name: requiredText(120),
   description: requiredText(2_000),
   repositoryReference: optionalText(500),
+  ownerId: uuid,
 }).strict();
 
 export const resolvedProjectDirectoryInputSchema = z.object({
   name: requiredText(120),
   description: requiredText(2_000),
   directoryPath: requiredText(4_096),
+  ownerId: uuid,
 }).strict();
 
 export const browseProjectDirectoriesInputSchema = z.object({
@@ -28,6 +56,7 @@ export const browseProjectDirectoriesInputSchema = z.object({
 export const registerProjectDirectoryInputSchema = z.object({
   relativePath: z.string().trim().max(4_096),
   description: optionalText(2_000),
+  ownerId: uuid,
 }).strict();
 
 export const registerFindingInputSchema = z.object({

@@ -10,18 +10,33 @@ import { expect, test, vi } from 'vitest';
 
 import { SecurityInboxService } from '../../src/core/service.js';
 import { openDatabase, type SqliteDatabase } from '../../src/storage/database.js';
+import { testOwnerId } from '../support/owner.js';
 
 const execFileAsync = promisify(execFile);
 
 function downgradeProjectsToV1(path: string): void {
   const legacy = new BetterSqlite3(path);
-  const columns = legacy.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>;
-  if (columns.some(({ name }) => name === 'directory_path')) {
-    legacy.exec(`
-      DROP INDEX IF EXISTS idx_projects_directory_path;
-      ALTER TABLE projects DROP COLUMN directory_path;
-    `);
-  }
+  // A real version 1 database has no users table and no owner_id, so both are removed here.
+  legacy.pragma('foreign_keys = OFF');
+  legacy.pragma('legacy_alter_table = ON');
+  legacy.exec('DROP INDEX IF EXISTS idx_projects_directory_path');
+  legacy.exec('DROP INDEX IF EXISTS idx_projects_owner_updated');
+  legacy.exec('ALTER TABLE projects RENAME TO projects_current');
+  legacy.exec(`
+    CREATE TABLE projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      repository_reference TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+    INSERT INTO projects (id, name, description, repository_reference, created_at, updated_at)
+      SELECT id, name, description, repository_reference, created_at, updated_at FROM projects_current;
+    DROP TABLE projects_current;
+    DROP TABLE IF EXISTS users;
+  `);
+  legacy.pragma('legacy_alter_table = OFF');
   legacy.pragma('user_version = 1');
   legacy.close();
 }
@@ -30,7 +45,7 @@ test('configures SQLite and repeats critical invariants with database constraint
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-schema-'));
   const path = join(directory, 'inbox.sqlite');
   const service = new SecurityInboxService(path);
-  const project = service.createProject({ name: 'Project', description: 'Description' });
+  const project = service.createProject({ ownerId: testOwnerId(service), name: 'Project', description: 'Description' });
   const finding = service.registerFinding({
     projectId: project.id,
     idempotencyKey: 'schema-test',
@@ -195,25 +210,29 @@ test('does not retry non-busy WAL errors and closes the database', () => {
   }
 });
 
-test('upgrades a v1 database to v2 without changing existing project ids', () => {
+test('upgrades a v1 database to the current version without changing existing project ids', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-v1-upgrade-'));
   const path = join(directory, 'inbox.sqlite');
   const service = new SecurityInboxService(path);
-  const project = service.createProject({ name: 'Existing', description: 'Keep me' });
+  const project = service.createProject({ ownerId: testOwnerId(service), name: 'Existing', description: 'Keep me' });
   service.close();
 
   downgradeProjectsToV1(path);
 
   try {
-    const upgraded = openDatabase(path);
+    const upgraded = openDatabase(path, { defaultUserSlug: 'legacy-owner' });
     try {
-      expect(upgraded.pragma('user_version', { simple: true })).toBe(2);
+      expect(upgraded.pragma('user_version', { simple: true })).toBe(3);
       expect((upgraded.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>)
         .map(({ name }) => name)).toContain('directory_path');
       expect(upgraded.prepare('SELECT id, directory_path FROM projects').get()).toEqual({
         id: project.id,
         directory_path: null,
       });
+      // The backfilled owner keeps the NOT NULL column satisfied for the pre-existing row.
+      expect(upgraded.prepare(`
+        SELECT u.slug FROM projects p JOIN users u ON u.id = p.owner_id
+      `).get()).toEqual({ slug: 'legacy-owner' });
     } finally {
       upgraded.close();
     }
@@ -226,7 +245,7 @@ test('rolls back a failed v1 to v2 migration without changing the project', () =
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-v2-rollback-'));
   const path = join(directory, 'inbox.sqlite');
   const service = new SecurityInboxService(path);
-  const project = service.createProject({ name: 'Existing', description: 'Keep me' });
+  const project = service.createProject({ ownerId: testOwnerId(service), name: 'Existing', description: 'Keep me' });
   service.close();
   downgradeProjectsToV1(path);
   const conflict = new BetterSqlite3(path);
@@ -234,7 +253,7 @@ test('rolls back a failed v1 to v2 migration without changing the project', () =
   conflict.close();
 
   try {
-    expect(() => openDatabase(path)).toThrow();
+    expect(() => openDatabase(path, { defaultUserSlug: 'legacy-owner' })).toThrow();
     const reopened = new BetterSqlite3(path);
     try {
       expect(reopened.pragma('user_version', { simple: true })).toBe(1);
@@ -253,14 +272,14 @@ test('rejects a future schema version without downgrading it', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-future-schema-'));
   const path = join(directory, 'inbox.sqlite');
   const seed = new BetterSqlite3(path);
-  seed.pragma('user_version = 3');
+  seed.pragma('user_version = 4');
   seed.close();
 
   try {
-    expect(() => openDatabase(path)).toThrow(/version 3/i);
+    expect(() => openDatabase(path)).toThrow(/version 4/i);
     const reopened = new BetterSqlite3(path);
     try {
-      expect(reopened.pragma('user_version', { simple: true })).toBe(3);
+      expect(reopened.pragma('user_version', { simple: true })).toBe(4);
     } finally {
       reopened.close();
     }

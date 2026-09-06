@@ -9,20 +9,44 @@
     <a class="button-link" href="/projects/new">Añadir proyecto</a>
   </section>
 
+  <nav class="scope-switch" aria-label="Alcance de la lista">
+    <a class="scope-switch__option{% if scope == 'mine' %} is-current{% endif %}"
+       href="/?scope=mine"{% if scope == 'mine' %} aria-current="page"{% endif %}>Míos</a>
+    <a class="scope-switch__option{% if scope == 'all' %} is-current{% endif %}"
+       href="/?scope=all"{% if scope == 'all' %} aria-current="page"{% endif %}>Todos<span class="scope-switch__count">{{ allProjectCount }}</span></a>
+  </nav>
+
   {% if projects.length %}
     <section class="project-grid" aria-label="Proyectos registrados">
       {% for project in projects %}
-        <article class="project-card">
-          <header>
-            <p class="section-label">Proyecto</p>
-            <h2><a href="/projects/{{ project.id }}/findings">{{ project.name }}</a></h2>
+        <article class="project-card{% if project.worstOpenSeverity %} project-card--{{ project.worstOpenSeverity }}{% else %} project-card--clear{% endif %}">
+          <header class="project-card__header">
+            <div>
+              <p class="section-label">Proyecto</p>
+              <h2><a href="/projects/{{ project.id }}/findings">{{ project.name }}</a></h2>
+            </div>
+            <span class="owner-tag" title="Registrado por {{ project.owner.name }}">
+              <span class="user-dot user-dot--{{ project.owner.color }}" aria-hidden="true"></span>
+              <span class="owner-tag__name">{{ project.owner.name }}</span>
+            </span>
           </header>
           <p>{{ project.description }}</p>
           {% if project.directoryPath %}<code class="repo-ref">{{ project.directoryPath }}</code>{% endif %}
           {% if project.repositoryReference %}<code class="repo-ref">{{ project.repositoryReference }}</code>{% endif %}
+
+          {% if project.bar.length %}
+            <div class="severity-bar" role="img"
+                 aria-label="{{ project.openTotal }} hallazgos abiertos por gravedad">
+              {% for segment in project.bar %}
+                <span class="severity-bar__segment severity-bar__segment--{{ segment.severity }} w-{{ segment.width }}{% if loop.last %} severity-bar__segment--fill{% endif %}"></span>
+              {% endfor %}
+            </div>
+          {% endif %}
+
           <ul class="severity-ledger" aria-label="Hallazgos abiertos por gravedad">
             {% for severity in severityOptions %}
-              <li class="severity-ledger__item severity--{{ severity.value }}" data-count-severity="{{ severity.value }}">
+              <li class="severity-ledger__item severity--{{ severity.value }}{% if not project.openCounts[severity.value] %} is-empty{% endif %}"
+                  data-count-severity="{{ severity.value }}">
                 <span>{{ severity.label }}</span>
                 <strong>{{ project.openCounts[severity.value] }}</strong>
               </li>
@@ -38,7 +62,18 @@
     </section>
   {% else %}
     <section class="empty-state">
-      <div><h2>Todavía no hay proyectos</h2><p>Añade una carpeta para empezar a registrar hallazgos.</p></div>
+      <div>
+        {% if scope == 'mine' and allProjectCount %}
+          <h2>Todavía no tienes proyectos</h2>
+          <p>Hay {{ allProjectCount }} registrados por otras personas. Añade una carpeta o mira todos.</p>
+        {% else %}
+          <h2>Todavía no hay proyectos</h2>
+          <p>Añade una carpeta para empezar a registrar hallazgos.</p>
+        {% endif %}
+      </div>
+      {% if scope == 'mine' and allProjectCount %}
+        <a class="button-link button-link--secondary" href="/?scope=all">Ver todos</a>
+      {% endif %}
     </section>
   {% endif %}
 {% endblock %}

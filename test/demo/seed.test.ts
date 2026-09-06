@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 
 import { SecurityInboxService } from '../../src/core/service.js';
 import { seedDemo } from '../../src/demo/seed.js';
+import { testOwnerId } from '../support/owner.js';
 
 const directories: string[] = [];
 
@@ -54,7 +55,7 @@ describe('demo seed', () => {
     directories.push(directory);
     const databasePath = join(directory, 'demo.sqlite');
     const service = new SecurityInboxService(databasePath);
-    const real = service.createProject({
+    const real = service.createProject({ ownerId: testOwnerId(service),
       name: 'Security Inbox API',
       description: 'Real project with the same display name.',
       repositoryReference: 'git://real.example/security-inbox',

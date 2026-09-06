@@ -10,6 +10,7 @@ import { SecurityInboxService } from '../../src/core/service.js';
 import type { RegisterFindingInput } from '../../src/core/types.js';
 import { ProjectDirectoryManager } from '../../src/projects/directory-manager.js';
 import { buildWebApp, resolveListenHost } from '../../src/web/app.js';
+import { testOwnerId } from '../support/owner.js';
 
 const PORT = 3300;
 const HOST = `127.0.0.1:${PORT}`;
@@ -24,6 +25,7 @@ beforeEach(async () => {
   projectsRoot = join(directory, 'projects');
   mkdirSync(join(projectsRoot, 'alpha', 'nested'), { recursive: true });
   service = new SecurityInboxService(join(directory, 'inbox.sqlite'));
+  testOwnerId(service);
   app = buildWebApp({
     service,
     directories: new ProjectDirectoryManager(service, {
@@ -62,8 +64,14 @@ function registration(
   };
 }
 
-async function get(url: string, host = HOST) {
-  return app.inject({ method: 'GET', url, headers: { host } });
+// Requests carry the session cookie by default; the tests that exercise the selection
+// screen pass anonymous: true instead.
+const sessionCookie = `${'si_user'}=tester`;
+
+async function get(url: string, host = HOST, options: { anonymous?: boolean } = {}) {
+  const headers: Record<string, string> = { host };
+  if (!options.anonymous) headers.cookie = sessionCookie;
+  return app.inject({ method: 'GET', url, headers });
 }
 
 function csrfFrom(html: string): string {
@@ -87,6 +95,7 @@ async function post(
     origin: `http://${HOST}`,
     'sec-fetch-site': 'same-origin',
     'content-type': 'application/x-www-form-urlencoded',
+    cookie: sessionCookie,
     ...overrides.headers,
   };
   if (overrides.omitOrigin) delete headers.origin;
@@ -153,7 +162,7 @@ describe('Security Inbox web adapter', () => {
   });
 
   test('shows non-terminal severity totals and pending-review count per project', async () => {
-    const project = service.createProject({ name: 'Counts', description: 'Counts project' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Counts', description: 'Counts project' });
     const statuses = ['pending_review', 'confirmed', 'in_progress', 'resolved'] as const;
     const severities = ['critical', 'high', 'medium', 'low'] as const;
 
@@ -182,8 +191,8 @@ describe('Security Inbox web adapter', () => {
   });
 
   test('lists an empty project and filters findings by severity, status, and query', async () => {
-    const project = service.createProject({ name: 'Web', description: 'Web app' });
-    const emptyProject = service.createProject({ name: 'Empty', description: 'No findings' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Web', description: 'Web app' });
+    const emptyProject = service.createProject({ ownerId: testOwnerId(service), name: 'Empty', description: 'No findings' });
     const sql = service.registerFinding(registration(project.id, 'sql')).finding;
     service.registerFinding(registration(project.id, 'cookie', {
       title: 'Weak cookie flags',
@@ -208,7 +217,7 @@ describe('Security Inbox web adapter', () => {
   });
 
   test('prechecks duplicates, then creates, views, edits, changes status, and adds a note', async () => {
-    const project = service.createProject({ name: 'Flows', description: 'All flows' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Flows', description: 'All flows' });
     service.registerFinding(registration(project.id, 'existing'));
     const token = await csrf();
 
@@ -316,7 +325,7 @@ describe('Security Inbox web adapter', () => {
   });
 
   test('returns understandable public errors for invalid and missing identifiers and bad input', async () => {
-    const project = service.createProject({ name: 'Errors', description: 'Error paths' });
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Errors', description: 'Error paths' });
     const token = await csrf();
 
     const invalid = await get('/projects/not-a-uuid/findings');
@@ -467,5 +476,94 @@ describe('Security Inbox web adapter', () => {
     expect(resolveListenHost({})).toBe('127.0.0.1');
     expect(resolveListenHost({ SECURITY_INBOX_CONTAINER: 'true' })).toBe('0.0.0.0');
     expect(resolveListenHost({ SECURITY_INBOX_CONTAINER: 'false' })).toBe('127.0.0.1');
+  });
+});
+
+describe('Security Inbox users', () => {
+  test('asks who you are without redirecting, then remembers the choice', async () => {
+    const anonymous = await get('/', HOST, { anonymous: true });
+
+    expect(anonymous.statusCode).toBe(200);
+    expect(anonymous.body).toContain('¿Quién eres?');
+    // The selection screen is rendered in place: a redirect here could only loop.
+    expect(anonymous.headers.location).toBeUndefined();
+    expect(anonymous.body).toContain('Esto no es un inicio de sesión');
+
+    const chosen = await post('/session/user', {
+      _csrf: csrfFrom(anonymous.body),
+      slug: 'tester',
+    }, { headers: { cookie: '' } });
+
+    expect(chosen.statusCode).toBe(303);
+    expect(chosen.headers['set-cookie']).toContain('si_user=tester');
+    expect(chosen.headers['set-cookie']).toContain('HttpOnly');
+    expect(chosen.headers['set-cookie']).toContain('SameSite=Strict');
+  });
+
+  test('creates a user from the form and signs them in', async () => {
+    const form = await get('/users/new');
+    const created = await post('/users', {
+      _csrf: csrfFrom(form.body),
+      slug: 'ada',
+      name: 'Ada',
+      color: 'coral',
+    });
+
+    expect(created.statusCode).toBe(303);
+    expect(created.headers['set-cookie']).toContain('si_user=ada');
+    expect(service.findUserBySlug('ada')?.color).toBe('coral');
+
+    // Repeating the same slug reuses the user instead of failing or duplicating.
+    const again = await post('/users', { _csrf: csrfFrom(form.body), slug: 'ada', name: 'Otra' });
+    expect(again.statusCode).toBe(303);
+    expect(service.listUsers().filter(({ slug }) => slug === 'ada')).toHaveLength(1);
+  });
+
+  test('separates projects by owner while keeping every project reachable', async () => {
+    const ada = service.registerUser({ slug: 'ada', name: 'Ada' }).user;
+    service.createProject({ name: 'Tester project', description: 'Mine', ownerId: testOwnerId(service) });
+    service.createProject({ name: 'Ada project', description: 'Hers', ownerId: ada.id });
+
+    const mine = await get('/');
+    expect(mine.body).toContain('Tester project');
+    expect(mine.body).not.toContain('Ada project');
+
+    const all = await get('/?scope=all');
+    expect(all.body).toContain('Tester project');
+    expect(all.body).toContain('Ada project');
+    expect(all.body).toContain('Ada');
+
+    // An unknown cookie falls back to the selection screen rather than leaking a list.
+    const stale = await app.inject({
+      method: 'GET',
+      url: '/',
+      headers: { host: HOST, cookie: 'si_user=ghost' },
+    });
+    expect(stale.statusCode).toBe(200);
+    expect(stale.body).toContain('¿Quién eres?');
+    expect(stale.body).not.toContain('Ada project');
+  });
+
+  test('registers a project owned by the current user', async () => {
+    const picker = await get('/projects/new?path=alpha');
+    const registered = await post('/projects/register', {
+      _csrf: csrfFrom(picker.body),
+      relativePath: 'alpha',
+    });
+
+    expect(registered.statusCode).toBe(303);
+    const [project] = service.listProjects({ scope: 'all' });
+    expect(project!.owner.slug).toBe('tester');
+  });
+
+  test('refuses to register a project when no user is selected', async () => {
+    const anonymous = await post('/projects/register', {
+      _csrf: await csrf(),
+      relativePath: 'alpha',
+    }, { headers: { cookie: '' } });
+
+    expect(anonymous.statusCode).toBe(400);
+    expect(anonymous.body).toContain('Elige quién eres');
+    expect(service.listProjects({ scope: 'all' })).toHaveLength(0);
   });
 });

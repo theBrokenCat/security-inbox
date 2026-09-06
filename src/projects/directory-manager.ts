@@ -106,6 +106,7 @@ export class ProjectDirectoryManager {
       name: basename(selected.relativePath),
       description: parsed.data.description || `Local project at ${selected.displayPath}`,
       directoryPath: selected.displayPath,
+      ownerId: parsed.data.ownerId,
     });
   }
 

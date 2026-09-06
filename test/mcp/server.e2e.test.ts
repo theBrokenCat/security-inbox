@@ -10,6 +10,7 @@ import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotoc
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 import { SecurityInboxService } from '../../src/core/service.js';
+import { testOwnerId } from '../support/owner.js';
 
 const expectedTools = [
   'add_finding_note',
@@ -17,6 +18,7 @@ const expectedTools = [
   'get_finding',
   'list_findings',
   'list_projects',
+  'list_users',
   'register_finding',
   'register_project',
   'update_finding',
@@ -39,11 +41,11 @@ beforeAll(async () => {
   projectsRoot = join(tempDirectory, 'projects');
   mkdirSync(join(projectsRoot, 'Gamma', 'nested'), { recursive: true });
   const service = new SecurityInboxService(databasePath);
-  projectId = service.createProject({
+  projectId = service.createProject({ ownerId: testOwnerId(service),
     name: 'Alpha',
     description: 'Temporary MCP test project',
   }).id;
-  secondProjectId = service.createProject({
+  secondProjectId = service.createProject({ ownerId: testOwnerId(service),
     name: 'Beta',
     description: 'Isolated MCP test project',
   }).id;
@@ -58,6 +60,7 @@ beforeAll(async () => {
       SECURITY_INBOX_DB: databasePath,
       SECURITY_INBOX_PROJECTS_ROOT: projectsRoot,
       SECURITY_INBOX_PROJECTS_DISPLAY_ROOT: '/srv/projects',
+      SECURITY_INBOX_USER: 'tester',
     },
     stderr: 'pipe',
   });
@@ -75,7 +78,7 @@ afterAll(async () => {
   rmSync(tempDirectory, { recursive: true, force: true });
 });
 
-test('exposes exactly the nine Security Inbox tools over stdio', async () => {
+test('exposes exactly the ten Security Inbox tools over stdio', async () => {
   const { tools } = await client.listTools();
 
   expect(tools.map(({ name }) => name).sort()).toEqual(expectedTools);
@@ -383,5 +386,28 @@ test('closes the initialized entrypoint cleanly on SIGTERM without stdout noise'
   } finally {
     lines.close();
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }
+});
+
+test('scopes projects to the configured user and never takes the owner from input', async () => {
+  const tools = (await client.listTools()).tools;
+  // The owner comes from SECURITY_INBOX_USER, so it must not be advertised as an argument.
+  expect(Object.keys(
+    tools.find(({ name }) => name === 'register_project')?.inputSchema.properties ?? {},
+  )).not.toContain('ownerId');
+
+  const users = await client.callTool({ name: 'list_users', arguments: {} });
+  expect((users.structuredContent as { users: Array<{ slug: string }> }).users.map(({ slug }) => slug))
+    .toContain('tester');
+
+  const mine = await client.callTool({ name: 'list_projects', arguments: {} });
+  const all = await client.callTool({ name: 'list_projects', arguments: { scope: 'all' } });
+  const mineNames = (mine.structuredContent as { projects: Array<{ name: string }> }).projects;
+  const allNames = (all.structuredContent as { projects: Array<{ name: string }> }).projects;
+
+  expect(mineNames.length).toBeGreaterThan(0);
+  expect(allNames.length).toBeGreaterThanOrEqual(mineNames.length);
+  for (const project of mineNames) {
+    expect((project as unknown as { owner: { slug: string } }).owner.slug).toBe('tester');
   }
 });

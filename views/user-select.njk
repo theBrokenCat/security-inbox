@@ -1,0 +1,41 @@
+{% extends "base.njk" %}
+{% block title %}¿Quién eres? · Security Inbox{% endblock %}
+{% block content %}
+  <section class="page-heading page-heading--compact">
+    <div>
+      <h1>¿Quién eres?</h1>
+      <p class="lede">Tu nombre separa tus proyectos de los del resto y firma lo que registras.</p>
+    </div>
+  </section>
+
+  <section class="disclosure-note" role="note">
+    <strong>Esto no es un inicio de sesión.</strong>
+    Cambiar de usuario es un clic y nadie verifica nada: sirve para atribuir trabajo, no para
+    restringir el acceso. Security Inbox confía en la red por la que llegas.
+  </section>
+
+  {% if hasUsers %}
+    <section class="user-grid" aria-label="Usuarios registrados">
+      {% for user in users %}
+        <form method="post" action="/session/user">
+          <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+          <input type="hidden" name="slug" value="{{ user.slug }}">
+          <button type="submit" class="user-card user-card--{{ user.color }}">
+            <span class="user-card__initial" aria-hidden="true">{{ user.name | truncate(1, true, "") | upper }}</span>
+            <span class="user-card__name">{{ user.name }}</span>
+            <span class="user-card__slug">{{ user.slug }}</span>
+          </button>
+        </form>
+      {% endfor %}
+    </section>
+    <p class="centered-action"><a class="button-link button-link--secondary" href="/users/new">Añadir otro usuario</a></p>
+  {% else %}
+    <section class="empty-state">
+      <div>
+        <h2>Todavía no hay nadie</h2>
+        <p>Crea el primer usuario para empezar a registrar proyectos.</p>
+      </div>
+      <a class="button-link" href="/users/new">Crear usuario</a>
+    </section>
+  {% endif %}
+{% endblock %}

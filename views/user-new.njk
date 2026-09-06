@@ -1,0 +1,43 @@
+{% extends "base.njk" %}
+{% block title %}Añadir usuario · Security Inbox{% endblock %}
+{% block content %}
+  <nav class="breadcrumbs" aria-label="Migas de pan">
+    <a href="/">Proyectos</a><span>/</span><a href="/users/new">Añadir usuario</a>
+  </nav>
+
+  <section class="page-heading page-heading--compact">
+    <div>
+      <h1>Añadir usuario</h1>
+      <p class="lede">El identificador es el que configuran los agentes en <code>SECURITY_INBOX_USER</code>.</p>
+    </div>
+  </section>
+
+  <form method="post" action="/users" class="form-sheet">
+    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+    <label>Identificador
+      <input name="slug" required maxlength="40" pattern="[a-z0-9\-]+" placeholder="guzman"
+             autocomplete="off" spellcheck="false">
+      <span class="field-hint">Minúsculas, números y guiones. Es lo que va en la cookie y en la configuración MCP.</span>
+    </label>
+    <label>Nombre visible <span class="optional">opcional</span>
+      <input name="name" maxlength="80" placeholder="Guzmán" autocomplete="off">
+    </label>
+    <fieldset class="color-choice">
+      <legend>Color</legend>
+      <span class="field-hint">Solo identifica a la persona: la gravedad de los hallazgos usa su propia escala.</span>
+      <div class="color-choice__options">
+        {% for color in userColors %}
+          <label class="color-swatch color-swatch--{{ color }}">
+            <input type="radio" name="color" value="{{ color }}" {% if loop.first %}checked{% endif %}>
+            <span class="color-swatch__dot" aria-hidden="true"></span>
+            <span class="color-swatch__label">{{ color }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="form-sheet__actions">
+      <button type="submit">Crear y entrar</button>
+      <a class="button-link button-link--secondary" href="/">Cancelar</a>
+    </div>
+  </form>
+{% endblock %}
