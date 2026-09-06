@@ -206,6 +206,12 @@ export class SecurityInboxRepository {
       ORDER BY p.name COLLATE NOCASE, p.id
     `).all({ ownerId }) as ProjectSummaryRow[];
 
+    const severityRank = (severity: Severity | null) => (
+      severity === null ? SEVERITIES.length : SEVERITIES.indexOf(severity)
+    );
+
+    // Worst open severity leads the list: what can hurt most is read first. The SQL order by
+    // name survives as the final tiebreaker, so the list stays stable between reloads.
     return rows.map((row) => {
       const openCounts: SeverityCounts = {
         critical: row.critical_count,
@@ -228,7 +234,36 @@ export class SecurityInboxRepository {
         pendingReviewCount: row.pending_review_count,
         worstOpenSeverity: worstOpenSeverity(openCounts),
       };
+    }).sort((left, right) => {
+      const byWorst = severityRank(left.worstOpenSeverity) - severityRank(right.worstOpenSeverity);
+      if (byWorst !== 0) return byWorst;
+      // Same worst severity: more of it first, then more unreviewed, then more open findings.
+      // Array.prototype.sort is stable, so the SQL order by name breaks any remaining tie.
+      const worst = left.worstOpenSeverity;
+      if (worst !== null) {
+        const byCount = right.openCounts[worst] - left.openCounts[worst];
+        if (byCount !== 0) return byCount;
+      }
+      return right.pendingReviewCount - left.pendingReviewCount
+        || right.openTotal - left.openTotal;
     });
+  }
+
+  transferProject(projectId: string, ownerId: string, updatedAt: string): void {
+    this.database.prepare(
+      'UPDATE projects SET owner_id = ?, updated_at = ? WHERE id = ?',
+    ).run(ownerId, updatedAt, projectId);
+  }
+
+  countProjectsOwnedBy(ownerId: string): number {
+    const row = this.database.prepare(
+      'SELECT count(*) AS total FROM projects WHERE owner_id = ?',
+    ).get(ownerId) as { total: number };
+    return row.total;
+  }
+
+  deleteUser(userId: string): void {
+    this.database.prepare('DELETE FROM users WHERE id = ?').run(userId);
   }
 
   insertUser(user: User): void {

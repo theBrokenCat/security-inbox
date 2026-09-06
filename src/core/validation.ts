@@ -22,6 +22,11 @@ export const createUserInputSchema = z.object({
   color: userColorSchema.optional(),
 }).strict();
 
+export const transferProjectInputSchema = z.object({
+  projectId: uuid,
+  ownerId: uuid,
+}).strict();
+
 export const listProjectsInputSchema = z.object({
   scope: projectScopeSchema.optional(),
   ownerId: uuid.optional(),

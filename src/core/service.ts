@@ -22,6 +22,7 @@ import type {
   RegisterFindingResult,
   RegisterUserResult,
   Scalar,
+  TransferProjectInput,
   User,
   UserColor,
 } from './types.js';
@@ -31,6 +32,8 @@ import {
   createProjectInputSchema,
   createUserInputSchema,
   listProjectsInputSchema,
+  transferProjectInputSchema,
+  userSlugSchema,
   duplicateSearchInputSchema,
   findingIdentitySchema,
   listFindingsInputSchema,
@@ -174,6 +177,35 @@ export class SecurityInboxService {
       };
       this.repository.insertProject(project);
       return { project, created: true };
+    });
+  }
+
+  transferProject(input: TransferProjectInput): Project {
+    const value = parse(transferProjectInputSchema, input);
+    return this.repository.immediate(() => {
+      this.requireProject(value.projectId);
+      this.requireUser(value.ownerId);
+      const current = this.repository.listProjects({ scope: 'all' })
+        .find(({ id }) => id === value.projectId)!;
+      this.repository.transferProject(
+        value.projectId,
+        value.ownerId,
+        timestampAfter(current.updatedAt),
+      );
+      return { ...current, ownerId: value.ownerId };
+    });
+  }
+
+  // Deleting a user must never orphan a project: owner_id is NOT NULL, so the caller has to
+  // hand the projects over first. This is the only deletion the application performs.
+  deleteUser(slug: string): void {
+    const value = parse(userSlugSchema, slug);
+    this.repository.immediate(() => {
+      const user = this.requireUserBySlug(value);
+      if (this.repository.countProjectsOwnedBy(user.id) > 0) {
+        throw new AppError('USER_HAS_PROJECTS', 'User still owns projects');
+      }
+      this.repository.deleteUser(user.id);
     });
   }
 

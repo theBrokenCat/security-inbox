@@ -1,4 +1,5 @@
 {% extends "base.njk" %}
+{% from "icons.njk" import icon %}
 {% block title %}Añadir proyecto · Security Inbox{% endblock %}
 {% block content %}
   <nav class="breadcrumbs" aria-label="Migas de pan">
@@ -25,7 +26,7 @@
         <input type="hidden" name="relativePath" value="{{ listing.relativePath }}">
         <div class="selection-panel__info"><span class="field-hint">Carpeta seleccionada</span><strong>{{ listing.displayPath }}</strong></div>
         <label>Descripción <span class="optional">opcional</span><textarea name="description" maxlength="2000" rows="3" placeholder="Añade contexto útil para ti y para los agentes"></textarea></label>
-        <button type="submit">Seleccionar esta carpeta</button>
+        <button type="submit">{{ icon('check') }}Seleccionar esta carpeta</button>
       </form>
     {% endif %}
 
@@ -33,7 +34,7 @@
       <h2 class="directory-list-title">Subcarpetas</h2>
       <ul class="directory-list" aria-label="Directorios">
         {% for directory in listing.directories %}
-          <li><a href="{{ directory.href }}"><span class="folder-icon" aria-hidden="true"></span><span><strong>{{ directory.name }}</strong><small>{{ directory.displayPath }}</small></span></a></li>
+          <li><a href="{{ directory.href }}">{{ icon('folder') }}<span><strong>{{ directory.name }}</strong><small>{{ directory.displayPath }}</small></span></a></li>
         {% endfor %}
       </ul>
     {% else %}

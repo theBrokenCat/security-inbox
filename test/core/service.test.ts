@@ -59,7 +59,7 @@ function registration(
 }
 
 describe('SecurityInboxService', () => {
-  test('creates stable UUID projects and lists them by name with non-terminal counts', () => {
+  test('creates stable UUID projects and leads the list with the worst open severity', () => {
     const zebra = service.createProject({ ownerId: testOwnerId(service),
       name: ' Zebra ',
       description: ' Main app ',
@@ -95,7 +95,9 @@ describe('SecurityInboxService', () => {
       }
     });
 
-    expect(service.listProjects().map(({ name }) => name)).toEqual(['Alpha', 'Zebra']);
+    // Zebra holds an open critical and Alpha holds nothing, so Zebra leads regardless of the
+    // alphabetical order that used to decide this.
+    expect(service.listProjects().map(({ name }) => name)).toEqual(['Zebra', 'Alpha']);
     expect(service.listProjects().find(({ id }) => id === zebra.id)).toMatchObject({
       openCounts: { critical: 1, high: 1, medium: 1, low: 0, informational: 0 },
       openTotal: 3,
@@ -518,5 +520,68 @@ describe('users and project ownership', () => {
     const [summary] = service.listProjects({ scope: 'all' });
     expect(summary!.worstOpenSeverity).toBe('high');
     expect(summary!.openCounts.critical).toBe(0);
+  });
+});
+
+describe('ordering, transfer and user removal', () => {
+  test('leads with the worst open severity and breaks ties by volume', () => {
+    const ownerId = testOwnerId(service);
+    const quiet = service.createProject({ name: 'Quiet', description: 'Nothing open', ownerId });
+    const oneCritical = service.createProject({ name: 'One critical', description: 'x', ownerId });
+    const twoCritical = service.createProject({ name: 'Two critical', description: 'x', ownerId });
+    const high = service.createProject({ name: 'High only', description: 'x', ownerId });
+
+    service.registerFinding(registration(oneCritical.id, 'a', { severity: 'critical' }));
+    service.registerFinding(registration(twoCritical.id, 'b', { severity: 'critical' }));
+    service.registerFinding(registration(twoCritical.id, 'c', { severity: 'critical' }));
+    service.registerFinding(registration(high.id, 'd', { severity: 'high' }));
+
+    expect(service.listProjects({ scope: 'all' }).map(({ name }) => name))
+      .toEqual(['Two critical', 'One critical', 'High only', 'Quiet']);
+
+    // A project whose findings are all closed falls to the bottom with the quiet ones.
+    const finding = service.listFindings({ projectId: oneCritical.id })[0]!;
+    service.updateFindingStatus({
+      projectId: oneCritical.id,
+      findingId: finding.id,
+      status: 'resolved',
+      note: 'Verified against the rebuilt query.',
+    });
+    expect(service.listProjects({ scope: 'all' }).map(({ name }) => name))
+      .toEqual(['Two critical', 'High only', 'One critical', 'Quiet']);
+  });
+
+  test('transfers a project between owners and keeps its findings', () => {
+    const ada = service.registerUser({ slug: 'ada' }).user;
+    const bruno = service.registerUser({ slug: 'bruno' }).user;
+    const project = service.createProject({ name: 'Handover', description: 'x', ownerId: ada.id });
+    service.registerFinding(registration(project.id, 'kept', { severity: 'medium' }));
+
+    const moved = service.transferProject({ projectId: project.id, ownerId: bruno.id });
+
+    expect(moved.ownerId).toBe(bruno.id);
+    expect(service.listProjects({ scope: 'mine', ownerId: ada.id })).toHaveLength(0);
+    expect(service.listProjects({ scope: 'mine', ownerId: bruno.id })[0]!.owner.slug).toBe('bruno');
+    expect(service.listFindings({ projectId: project.id })).toHaveLength(1);
+    expect(new Date(moved.updatedAt).getTime())
+      .toBeGreaterThan(new Date(project.updatedAt).getTime() - 1);
+  });
+
+  test('refuses to delete a user that still owns projects', () => {
+    const ada = service.registerUser({ slug: 'ada' }).user;
+    const bruno = service.registerUser({ slug: 'bruno' }).user;
+    const project = service.createProject({ name: 'Held', description: 'x', ownerId: ada.id });
+
+    expectCode(() => service.deleteUser('ada'), 'USER_HAS_PROJECTS');
+    expect(service.findUserBySlug('ada')).toBeDefined();
+
+    // Handing the project over is what unblocks the removal; owner_id is NOT NULL and must
+    // never be left pointing at nobody.
+    service.transferProject({ projectId: project.id, ownerId: bruno.id });
+    service.deleteUser('ada');
+
+    expect(service.findUserBySlug('ada')).toBeUndefined();
+    expect(service.listProjects({ scope: 'all' })[0]!.owner.slug).toBe('bruno');
+    expectCode(() => service.deleteUser('nadie'), 'USER_NOT_FOUND');
   });
 });

@@ -1,4 +1,5 @@
 {% extends "base.njk" %}
+{% from "icons.njk" import icon %}
 {% block title %}Proyectos · Security Inbox{% endblock %}
 {% block content %}
   <section class="page-heading">
@@ -6,33 +7,94 @@
       <h1>Proyectos</h1>
       <p class="lede">Separa las sospechas por contexto y revisa primero lo que aún no tiene criterio humano.</p>
     </div>
-    <a class="button-link" href="/projects/new">Añadir proyecto</a>
+    <a class="button-link" href="/projects/new">{{ icon('plus') }}Añadir proyecto</a>
   </section>
+
+  {% if projects.length %}
+    <section class="overview" aria-label="Resumen">
+      <div class="overview__figure overview__figure--critical{% if not totals.critical %} is-clear{% endif %}">
+        {{ icon('critical') }}
+        <span class="overview__count">{{ totals.critical }}</span>
+        <span class="overview__label">Críticas abiertas</span>
+      </div>
+      <div class="overview__figure">
+        {{ icon('pending_review') }}
+        <span class="overview__count">{{ totals.pendingReview }}</span>
+        <span class="overview__label">Sin revisar</span>
+      </div>
+      <div class="overview__figure">
+        {{ icon('inbox') }}
+        <span class="overview__count">{{ totals.open }}</span>
+        <span class="overview__label">Abiertas en total</span>
+      </div>
+      <div class="overview__figure">
+        {{ icon('project') }}
+        <span class="overview__count">{{ projects.length }}</span>
+        <span class="overview__label">{% if scope == 'all' %}Proyectos{% else %}Proyectos tuyos{% endif %}</span>
+      </div>
+    </section>
+  {% endif %}
 
   <nav class="scope-switch" aria-label="Alcance de la lista">
     <a class="scope-switch__option{% if scope == 'mine' %} is-current{% endif %}"
-       href="/?scope=mine"{% if scope == 'mine' %} aria-current="page"{% endif %}>Míos</a>
+       href="/?scope=mine"{% if scope == 'mine' %} aria-current="page"{% endif %}>{{ icon('user') }}Míos</a>
     <a class="scope-switch__option{% if scope == 'all' %} is-current{% endif %}"
-       href="/?scope=all"{% if scope == 'all' %} aria-current="page"{% endif %}>Todos<span class="scope-switch__count">{{ allProjectCount }}</span></a>
+       href="/?scope=all"{% if scope == 'all' %} aria-current="page"{% endif %}>{{ icon('users') }}Todos<span class="scope-switch__count">{{ allProjectCount }}</span></a>
   </nav>
 
-  {% if projects.length %}
+  {% if urgent.length %}
+    <section class="urgent" aria-labelledby="urgent-title">
+      <header class="urgent__header">
+        <h2 id="urgent-title">{{ icon('critical') }}Requiere atención ahora</h2>
+        <p>{{ urgent.length }} proyecto{% if urgent.length != 1 %}s{% endif %} con hallazgos críticos o altos sin cerrar.</p>
+      </header>
+      <ul class="urgent__list">
+        {% for project in urgent %}
+          <li class="urgent__item urgent__item--{{ project.worstOpenSeverity }}">
+            <a class="urgent__link" href="/projects/{{ project.id }}/findings">
+              <span class="urgent__badge urgent__badge--{{ project.worstOpenSeverity }}">
+                {{ icon(project.worstOpenSeverity) }}{{ severityLabels[project.worstOpenSeverity] }}
+              </span>
+              <span class="urgent__body">
+                <strong>{{ project.name }}</strong>
+                <span class="urgent__meta">
+                  {% for severity in severityOptions %}{% if project.openCounts[severity.value] %}<span class="urgent__count severity--{{ severity.value }}" data-count-severity="{{ severity.value }}" data-count="{{ project.openCounts[severity.value] }}">{{ project.openCounts[severity.value] }} {{ severity.label | lower }}</span>{% endif %}{% endfor %}
+                  <span class="urgent__count urgent__count--pending" data-pending-review-count="{{ project.pendingReviewCount }}">{{ icon('pending_review') }}{{ project.pendingReviewCount }} sin revisar</span>
+                  <span class="urgent__count urgent__count--open" data-open-total="{{ project.openTotal }}">{{ project.openTotal }} abiertos</span>
+                </span>
+              </span>
+              <span class="owner-tag" title="Registrado por {{ project.owner.name }}">
+                <span class="user-dot user-dot--{{ project.owner.color }}" aria-hidden="true"></span>
+                <span class="owner-tag__name">{{ project.owner.name }}</span>
+              </span>
+              {{ icon('chevron-right', 'urgent__chevron') }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if rest.length %}
+    {% if urgent.length %}
+      <h2 class="section-divider">{{ icon('project') }}Resto de proyectos</h2>
+    {% endif %}
     <section class="project-grid" aria-label="Proyectos registrados">
-      {% for project in projects %}
+      {% for project in rest %}
         <article class="project-card{% if project.worstOpenSeverity %} project-card--{{ project.worstOpenSeverity }}{% else %} project-card--clear{% endif %}">
           <header class="project-card__header">
             <div>
-              <p class="section-label">Proyecto</p>
-              <h2><a href="/projects/{{ project.id }}/findings">{{ project.name }}</a></h2>
+              <p class="section-label">{{ icon('project') }}Proyecto</p>
+              <h3><a href="/projects/{{ project.id }}/findings">{{ project.name }}</a></h3>
             </div>
             <span class="owner-tag" title="Registrado por {{ project.owner.name }}">
               <span class="user-dot user-dot--{{ project.owner.color }}" aria-hidden="true"></span>
               <span class="owner-tag__name">{{ project.owner.name }}</span>
             </span>
           </header>
-          <p>{{ project.description }}</p>
-          {% if project.directoryPath %}<code class="repo-ref">{{ project.directoryPath }}</code>{% endif %}
-          {% if project.repositoryReference %}<code class="repo-ref">{{ project.repositoryReference }}</code>{% endif %}
+          <p class="project-card__description">{{ project.description }}</p>
+          {% if project.directoryPath %}<code class="repo-ref">{{ icon('folder') }}{{ project.directoryPath }}</code>{% endif %}
+          {% if project.repositoryReference %}<code class="repo-ref">{{ icon('folder') }}{{ project.repositoryReference }}</code>{% endif %}
 
           {% if project.bar.length %}
             <div class="severity-bar" role="img"
@@ -41,27 +103,41 @@
                 <span class="severity-bar__segment severity-bar__segment--{{ segment.severity }} w-{{ segment.width }}"></span>
               {% endfor %}
             </div>
+            <ul class="severity-chips" aria-label="Hallazgos abiertos por gravedad">
+              {% for severity in severityOptions %}
+                {% if project.openCounts[severity.value] %}
+                  <li class="severity-chip severity-chip--{{ severity.value }}"
+                      data-count-severity="{{ severity.value }}" data-count="{{ project.openCounts[severity.value] }}">
+                    {{ icon(severity.value) }}{{ project.openCounts[severity.value] }} {{ severity.label | lower }}
+                  </li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="project-card__clear">{{ icon('check') }}Sin hallazgos abiertos</p>
           {% endif %}
 
-          <ul class="severity-ledger" aria-label="Hallazgos abiertos por gravedad">
-            {% for severity in severityOptions %}
-              <li class="severity-ledger__item severity--{{ severity.value }}{% if not project.openCounts[severity.value] %} is-empty{% endif %}"
-                  data-count-severity="{{ severity.value }}">
-                <span>{{ severity.label }}</span>
-                <strong>{{ project.openCounts[severity.value] }}</strong>
-              </li>
-            {% endfor %}
-          </ul>
           <footer class="project-card__footer">
-            <strong>{{ project.openTotal }} abiertos</strong>
-            <span data-pending-review-count="{{ project.pendingReviewCount }}">{{ project.pendingReviewCount }} sin revisar</span>
-            <a class="text-link" href="/projects/{{ project.id }}/findings">Abrir proyecto</a>
+            {% if project.pendingReviewCount %}
+              <span class="pending-flag" data-pending-review-count="{{ project.pendingReviewCount }}">
+                {{ icon('pending_review') }}{{ project.pendingReviewCount }} sin revisar
+              </span>
+            {% else %}
+              <span class="pending-flag pending-flag--clear" data-pending-review-count="0">
+                {{ icon('check') }}Todo revisado
+              </span>
+            {% endif %}
+            <span class="project-card__open" data-open-total="{{ project.openTotal }}">{{ project.openTotal }} abiertos</span>
+            <a class="text-link" href="/projects/{{ project.id }}/findings">Abrir{{ icon('chevron-right') }}</a>
           </footer>
         </article>
       {% endfor %}
     </section>
-  {% else %}
+  {% endif %}
+
+  {% if not projects.length %}
     <section class="empty-state">
+      <div class="empty-state__icon">{{ icon('inbox') }}</div>
       <div>
         {% if scope == 'mine' and allProjectCount %}
           <h2>Todavía no tienes proyectos</h2>
@@ -72,7 +148,9 @@
         {% endif %}
       </div>
       {% if scope == 'mine' and allProjectCount %}
-        <a class="button-link button-link--secondary" href="/?scope=all">Ver todos</a>
+        <a class="button-link button-link--secondary" href="/?scope=all">{{ icon('users') }}Ver todos</a>
+      {% else %}
+        <a class="button-link" href="/projects/new">{{ icon('plus') }}Añadir proyecto</a>
       {% endif %}
     </section>
   {% endif %}

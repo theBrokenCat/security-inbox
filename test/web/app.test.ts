@@ -182,12 +182,18 @@ describe('Security Inbox web adapter', () => {
     });
 
     const page = await get('/');
-    expect(page.body).toMatch(/data-count-severity="critical"[^>]*>\s*<span>Crítica<\/span>\s*<strong>1<\/strong>/);
-    expect(page.body).toMatch(/data-count-severity="high"[^>]*>\s*<span>Alta<\/span>\s*<strong>1<\/strong>/);
-    expect(page.body).toMatch(/data-count-severity="medium"[^>]*>\s*<span>Media<\/span>\s*<strong>1<\/strong>/);
-    expect(page.body).toMatch(/data-count-severity="low"[^>]*>\s*<span>Baja<\/span>\s*<strong>0<\/strong>/);
+    // A project with an open critical is presented as an urgent row rather than a card, but
+    // the counting hooks are the same in both presentations.
+    const counts = Object.fromEntries(
+      [...page.body.matchAll(/data-count-severity="(\w+)" data-count="(\d+)"/g)]
+        .map(([, severity, count]) => [severity, Number(count)]),
+    );
+    expect(counts).toEqual({ critical: 1, high: 1, medium: 1 });
+    // The resolved low finding is excluded rather than shown as a zero.
+    expect(counts.low).toBeUndefined();
     expect(page.body).toContain('data-pending-review-count="1"');
-    expect(page.body).toContain('3 abiertos');
+    expect(page.body).toContain('data-open-total="3"');
+    expect(page.body).toContain('Requiere atención ahora');
   });
 
   test('lists an empty project and filters findings by severity, status, and query', async () => {
@@ -604,7 +610,9 @@ describe('Security Inbox request guards on the user routes', () => {
       description: 'Three severities, one finding each',
       ownerId: testOwnerId(service),
     });
-    for (const severity of ['critical', 'high', 'medium'] as const) {
+    // Deliberately below the urgent threshold: the proportional bar belongs to the card
+    // presentation, and a critical or high project is shown as an urgent row instead.
+    for (const severity of ['medium', 'low', 'informational'] as const) {
       service.registerFinding(registration(project.id, `bar-${severity}`, { severity }));
     }
 

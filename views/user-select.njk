@@ -1,4 +1,5 @@
 {% extends "base.njk" %}
+{% from "icons.njk" import icon %}
 {% block title %}¿Quién eres? · Security Inbox{% endblock %}
 {% block content %}
   <section class="page-heading page-heading--compact">
@@ -9,9 +10,9 @@
   </section>
 
   <section class="disclosure-note" role="note">
-    <strong>Esto no es un inicio de sesión.</strong>
+    {{ icon('shield') }}<span><strong>Esto no es un inicio de sesión.</strong>
     Cambiar de usuario es un clic y nadie verifica nada: sirve para atribuir trabajo, no para
-    restringir el acceso. Security Inbox confía en la red por la que llegas.
+    restringir el acceso. Security Inbox confía en la red por la que llegas.</span>
   </section>
 
   {% if hasUsers %}

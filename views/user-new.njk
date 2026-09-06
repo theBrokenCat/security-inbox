@@ -1,4 +1,5 @@
 {% extends "base.njk" %}
+{% from "icons.njk" import icon %}
 {% block title %}Añadir usuario · Security Inbox{% endblock %}
 {% block content %}
   <nav class="breadcrumbs" aria-label="Migas de pan">
@@ -36,7 +37,7 @@
       </div>
     </fieldset>
     <div class="form-sheet__actions">
-      <button type="submit">Crear y entrar</button>
+      <button type="submit">{{ icon('check') }}Crear y entrar</button>
       <a class="button-link button-link--secondary" href="/">Cancelar</a>
     </div>
   </form>

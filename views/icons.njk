@@ -1,0 +1,61 @@
+{# Inline SVG only: the CSP is default-src 'none' with img-src 'self', so an icon font or a
+   sprite fetched over the network would silently fail. Every icon is decorative and marked
+   aria-hidden; the surrounding text always carries the meaning. #}
+{% macro icon(name, className = '') %}
+<svg class="icon {{ className }}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  {%- if name == 'critical' -%}
+    <path d="M12 3.5 2.8 19.5h18.4L12 3.5Z"/><path d="M12 10v4"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/>
+  {%- elif name == 'high' -%}
+    <circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><circle cx="12" cy="16.3" r=".6" fill="currentColor"/>
+  {%- elif name == 'medium' -%}
+    <circle cx="12" cy="12" r="9"/><path d="M8.5 12h7"/>
+  {%- elif name == 'low' -%}
+    <circle cx="12" cy="12" r="9"/><path d="M12 16.5v-5"/><circle cx="12" cy="8" r=".6" fill="currentColor"/>
+  {%- elif name == 'informational' -%}
+    <circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r=".6" fill="currentColor"/>
+  {%- elif name == 'pending_review' -%}
+    <circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/>
+  {%- elif name == 'confirmed' -%}
+    <path d="M12 3 4 6.4v5.2c0 4.5 3.2 8.3 8 9.4 4.8-1.1 8-4.9 8-9.4V6.4L12 3Z"/><path d="m9.2 12 2 2 3.6-3.8"/>
+  {%- elif name == 'in_progress' -%}
+    <path d="M20.5 12a8.5 8.5 0 1 1-2.9-6.4"/><path d="M20.5 4v4.2h-4.2"/>
+  {%- elif name == 'resolved' -%}
+    <circle cx="12" cy="12" r="9"/><path d="m8.2 12.2 2.6 2.6 5-5.4"/>
+  {%- elif name == 'dismissed' -%}
+    <circle cx="12" cy="12" r="9"/><path d="M8.4 12h7.2"/>
+  {%- elif name == 'project' -%}
+    <path d="M3 7.2A1.8 1.8 0 0 1 4.8 5.4h4l2 2.4h8.4A1.8 1.8 0 0 1 21 9.6v8.4a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 18V7.2Z"/>
+  {%- elif name == 'folder' -%}
+    <path d="M3 7.2A1.8 1.8 0 0 1 4.8 5.4h4l2 2.4h8.4A1.8 1.8 0 0 1 21 9.6v8.4a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 18V7.2Z"/>
+  {%- elif name == 'plus' -%}
+    <path d="M12 5.5v13M5.5 12h13"/>
+  {%- elif name == 'user' -%}
+    <circle cx="12" cy="8.4" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>
+  {%- elif name == 'users' -%}
+    <circle cx="9.6" cy="8.4" r="3.2"/><path d="M3.4 19.4a6.2 6.2 0 0 1 12.4 0"/><path d="M16.4 5.6a3.2 3.2 0 0 1 0 5.6M17.6 14.4a6.2 6.2 0 0 1 3 5"/>
+  {%- elif name == 'search' -%}
+    <circle cx="10.8" cy="10.8" r="6.4"/><path d="m15.6 15.6 4 4"/>
+  {%- elif name == 'filter' -%}
+    <path d="M4 6h16M7 12h10M10 18h4"/>
+  {%- elif name == 'note' -%}
+    <path d="M5.4 4.8h13.2v14.4H5.4z"/><path d="M8.4 9h7.2M8.4 12.6h7.2M8.4 16.2h4.2"/>
+  {%- elif name == 'history' -%}
+    <path d="M3.6 12a8.4 8.4 0 1 0 2.5-6"/><path d="M3.6 3.6V8h4.4"/><path d="M12 7.8V12l3 1.8"/>
+  {%- elif name == 'chevron-right' -%}
+    <path d="m9.6 5.4 6.6 6.6-6.6 6.6"/>
+  {%- elif name == 'chevron-up' -%}
+    <path d="m5.4 14.4 6.6-6.6 6.6 6.6"/>
+  {%- elif name == 'arrow-up' -%}
+    <path d="M12 19.2V4.8M6 10.8 12 4.8l6 6"/>
+  {%- elif name == 'check' -%}
+    <path d="m5 12.6 4.6 4.6L19 7.2"/>
+  {%- elif name == 'inbox' -%}
+    <path d="M3.6 13.2 6 5.4h12l2.4 7.8v5.4H3.6v-5.4Z"/><path d="M3.6 13.2h4.2l1.2 2.4h6l1.2-2.4h4.2"/>
+  {%- elif name == 'shield' -%}
+    <path d="M12 3 4.8 6v5.4c0 4.4 3 8.1 7.2 9.1 4.2-1 7.2-4.7 7.2-9.1V6L12 3Z"/>
+  {%- elif name == 'swap' -%}
+    <path d="M4.8 8.4h12.6M14.4 5.4l3 3-3 3"/><path d="M19.2 15.6H6.6M9.6 12.6l-3 3 3 3"/>
+  {%- endif -%}
+</svg>
+{% endmacro %}

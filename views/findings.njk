@@ -1,23 +1,41 @@
 {% extends "base.njk" %}
+{% from "icons.njk" import icon %}
 {% block title %}{{ project.name }} · Security Inbox{% endblock %}
 {% block content %}
-  <nav class="breadcrumbs" aria-label="Migas de pan"><a href="/">Proyectos</a><span aria-hidden="true">/</span><span>{{ project.name }}</span></nav>
+  <nav class="breadcrumbs" aria-label="Migas de pan"><a href="/">Proyectos</a>{{ icon('chevron-right') }}<span>{{ project.name }}</span></nav>
   <section class="page-heading page-heading--compact">
-    <div><h1>{{ project.name }}</h1><p class="lede">{{ project.description }}</p>{% if project.directoryPath %}<code class="repo-ref">{{ project.directoryPath }}</code>{% endif %}{% if project.repositoryReference %}<code class="repo-ref">{{ project.repositoryReference }}</code>{% endif %}</div>
-    <a class="button-link" href="/projects/{{ project.id }}/findings/new">Registrar hallazgo</a>
+    <div><h1>{{ project.name }}</h1><p class="lede">{{ project.description }}</p>{% if project.directoryPath %}<code class="repo-ref">{{ icon('folder') }}{{ project.directoryPath }}</code>{% endif %}{% if project.repositoryReference %}<code class="repo-ref">{{ icon('folder') }}{{ project.repositoryReference }}</code>{% endif %}</div>
+    <a class="button-link" href="/projects/{{ project.id }}/findings/new">{{ icon('plus') }}Registrar hallazgo</a>
+  </section>
+
+  <section class="owner-bar">
+    <span class="owner-bar__current">
+      <span class="user-dot user-dot--{{ project.owner.color }}" aria-hidden="true"></span>
+      Dueño: <strong>{{ project.owner.name }}</strong>
+    </span>
+    {% if users.length > 1 %}
+      <form method="post" action="/projects/{{ project.id }}/owner" class="owner-bar__form">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        <label class="visually-hidden" for="owner-slug">Traspasar a</label>
+        <select id="owner-slug" name="slug">
+          {% for user in users %}<option value="{{ user.slug }}"{% if user.slug == project.owner.slug %} selected{% endif %}>{{ user.name }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="button--paper">{{ icon('swap') }}Traspasar</button>
+      </form>
+    {% endif %}
   </section>
 
   {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
 
   <form method="get" action="/projects/{{ project.id }}/findings" class="filter-bar" aria-label="Filtrar hallazgos">
-    <label>Buscar <input type="search" name="query" maxlength="200" value="{{ filters.query or '' }}" placeholder="Título u origen"></label>
+    <label>{{ icon('search') }}Buscar <input type="search" name="query" maxlength="200" value="{{ filters.query or '' }}" placeholder="Título u origen"></label>
     <label>Gravedad
       <select name="severity"><option value="">Todas</option>{% for option in severityOptions %}<option value="{{ option.value }}"{% if filters.severity == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>
     </label>
     <label>Estado
       <select name="status"><option value="">Todos</option>{% for option in statusOptions %}<option value="{{ option.value }}"{% if filters.status == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>
     </label>
-    <button type="submit" class="button--ink">Aplicar filtros</button>
+    <button type="submit" class="button--ink">{{ icon('filter') }}Aplicar filtros</button>
   </form>
 
   {% if findings.length %}
@@ -25,7 +43,7 @@
       {% for finding in findings %}
         <li class="finding-row severity-border--{{ finding.severity }}">
           <div class="finding-row__body">
-            <div class="finding-row__meta"><span class="severity-tag severity-tag--{{ finding.severity }}">{{ severityLabels[finding.severity] }}</span><span class="status-tag status-tag--{{ finding.status }}">{{ statusLabels[finding.status] }}</span></div>
+            <div class="finding-row__meta"><span class="severity-tag severity-tag--{{ finding.severity }}">{{ icon(finding.severity) }}{{ severityLabels[finding.severity] }}</span><span class="status-tag status-tag--{{ finding.status }}">{{ icon(finding.status) }}{{ statusLabels[finding.status] }}</span></div>
             <h2><a href="/projects/{{ project.id }}/findings/{{ finding.id }}">{{ finding.title }}</a></h2>
             <p>Origen: {{ finding.origin }}{% if finding.filePath %} · <code>{{ finding.filePath }}{% if finding.lineNumber %}:{{ finding.lineNumber }}{% endif %}</code>{% endif %}</p>
           </div>

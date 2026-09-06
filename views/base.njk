@@ -1,4 +1,4 @@
-<!doctype html>
+{% from "icons.njk" import icon %}<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -11,7 +11,7 @@
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
   <header class="masthead">
     <a class="brand" href="/" aria-label="Security Inbox, proyectos">
-      <span class="brand__mark" aria-hidden="true">SI</span>
+      <span class="brand__mark" aria-hidden="true">{{ icon('shield') }}</span>
       <span><strong>Security Inbox</strong><small>Gestión local de hallazgos</small></span>
     </a>
     <div class="masthead__session">
@@ -35,7 +35,8 @@
                 </form>
               {% endif %}
             {% endfor %}
-            <a class="user-switcher__option user-switcher__option--add" href="/users/new">Añadir usuario</a>
+            <a class="user-switcher__option" href="/users">{{ icon('users') }}Gestionar usuarios</a>
+            <a class="user-switcher__option user-switcher__option--add" href="/users/new">{{ icon('plus') }}Añadir usuario</a>
           </div>
         </details>
       {% endif %}
@@ -45,6 +46,6 @@
   <main id="contenido" class="page-shell">
     {% block content %}{% endblock %}
   </main>
-  <footer class="footer">Una sospecha registrada no es una vulnerabilidad confirmada.</footer>
+  <footer class="footer">{{ icon('shield') }}Una sospecha registrada no es una vulnerabilidad confirmada.</footer>
 </body>
 </html>

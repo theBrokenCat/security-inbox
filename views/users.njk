@@ -1,0 +1,50 @@
+{% extends "base.njk" %}
+{% from "icons.njk" import icon %}
+{% block title %}Usuarios · Security Inbox{% endblock %}
+{% block content %}
+  <nav class="breadcrumbs" aria-label="Migas de pan">
+    <a href="/">Proyectos</a>{{ icon('chevron-right') }}<span>Usuarios</span>
+  </nav>
+
+  <section class="page-heading page-heading--compact">
+    <div>
+      <h1>Usuarios</h1>
+      <p class="lede">Quién puede figurar como dueño de un proyecto. No es una lista de permisos.</p>
+    </div>
+    <a class="button-link" href="/users/new">{{ icon('plus') }}Añadir usuario</a>
+  </section>
+
+  <section class="disclosure-note" role="note">
+    {{ icon('shield') }}
+    <span><strong>Esto no es control de acceso.</strong>
+    Cualquiera que abra la aplicación puede ponerse cualquiera de estos nombres.</span>
+  </section>
+
+  <ul class="user-list" aria-label="Usuarios registrados">
+    {% for user in users %}
+      <li class="user-list__item">
+        <span class="user-list__identity">
+          <span class="user-avatar user-avatar--{{ user.color }}" aria-hidden="true">{{ user.name | truncate(1, true, "") | upper }}</span>
+          <span>
+            <strong>{{ user.name }}</strong>
+            <code>{{ user.slug }}</code>
+          </span>
+        </span>
+        <span class="user-list__owned">
+          {{ icon('project') }}{{ owned[user.slug] }} proyecto{% if owned[user.slug] != 1 %}s{% endif %}
+        </span>
+        {% if owned[user.slug] %}
+          <span class="user-list__blocked" title="Traspasa sus proyectos antes de eliminarlo">
+            {{ icon('swap') }}Traspasa sus proyectos para poder eliminarlo
+          </span>
+        {% else %}
+          <form method="post" action="/users/delete">
+            <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+            <input type="hidden" name="slug" value="{{ user.slug }}">
+            <button type="submit" class="button--danger">{{ icon('dismissed') }}Eliminar</button>
+          </form>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock %}

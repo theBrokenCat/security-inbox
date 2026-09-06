@@ -28,6 +28,7 @@ const publicMessages: Record<AppErrorCode, string> = {
   DIRECTORY_UNAVAILABLE: 'Directory is unavailable.',
   USER_NOT_FOUND: 'SECURITY_INBOX_USER does not match a registered user.',
   USER_REQUIRED: 'Set SECURITY_INBOX_USER to the slug of a registered user before writing.',
+  USER_HAS_PROJECTS: 'User still owns projects and cannot be removed.',
 };
 
 const uuidSchema = z.string().uuid();
@@ -128,6 +129,7 @@ const errorSchema = z.object({
       'DIRECTORY_UNAVAILABLE',
       'USER_NOT_FOUND',
       'USER_REQUIRED',
+      'USER_HAS_PROJECTS',
       'INTERNAL_ERROR',
     ]),
     message: z.string(),

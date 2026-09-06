@@ -33,6 +33,7 @@ export type CreateUserInput = {
   color?: UserColor;
 };
 export type RegisterUserResult = { user: User; created: boolean };
+export type TransferProjectInput = { projectId: string; ownerId: string };
 
 export type Project = {
   id: string;
@@ -181,7 +182,8 @@ export type AppErrorCode =
   | 'DIRECTORY_INVALID'
   | 'DIRECTORY_UNAVAILABLE'
   | 'USER_NOT_FOUND'
-  | 'USER_REQUIRED';
+  | 'USER_REQUIRED'
+  | 'USER_HAS_PROJECTS';
 export type PublicAppError = {
   code: AppErrorCode;
   message: string;
