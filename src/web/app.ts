@@ -170,15 +170,30 @@ function queryText(value: unknown): string | undefined {
 }
 
 // The severity bar is sized here, not in the template: the CSP forbids inline styles, so the
-// proportion has to arrive as a class name from a closed set of 5%% steps.
+// proportion has to arrive as a class name from a closed set of 5% steps. Widths are shared
+// out by largest remainder so they total exactly 100 and no segment misrepresents its share.
 function severityBar(project: ProjectSummary): Array<{ severity: string; width: number }> {
   if (project.openTotal === 0) return [];
-  return SEVERITIES
+  const steps = 20;
+  const open = SEVERITIES
     .filter((severity) => project.openCounts[severity] > 0)
-    .map((severity) => ({
-      severity,
-      width: Math.max(5, Math.round((project.openCounts[severity] / project.openTotal) * 20) * 5),
-    }));
+    .map((severity) => {
+      const exact = (project.openCounts[severity] / project.openTotal) * steps;
+      return { severity, floor: Math.max(1, Math.floor(exact)), remainder: exact - Math.floor(exact) };
+    });
+
+  let remaining = steps - open.reduce((total, { floor }) => total + floor, 0);
+  const byRemainder = [...open].sort((left, right) => right.remainder - left.remainder);
+  for (let index = 0; remaining > 0; index += 1, remaining -= 1) {
+    byRemainder[index % byRemainder.length]!.floor += 1;
+  }
+  // Rounding every share up to at least one step can overshoot when many severities are open.
+  for (let index = 0; remaining < 0; index += 1, remaining += 1) {
+    const candidate = [...open].sort((left, right) => right.floor - left.floor)[0]!;
+    candidate.floor -= 1;
+  }
+
+  return open.map(({ severity, floor }) => ({ severity, width: floor * 5 }));
 }
 
 function projectView(project: ProjectSummary) {

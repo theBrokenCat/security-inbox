@@ -598,14 +598,12 @@ summary { display: flex; align-items: center; min-height: 2.75rem; font-size: 1.
 
 .severity-bar {
   display: flex;
-  gap: 2px;
   height: .5rem;
   margin-top: 1.1rem;
   overflow: hidden;
   border-radius: 999px;
 }
-.severity-bar__segment { flex: 0 0 auto; height: 100%; border-radius: 999px; }
-.severity-bar__segment--fill { flex-grow: 1; }
+.severity-bar__segment { flex: 0 0 auto; height: 100%; }
 .severity-bar__segment--critical { background: var(--critical-solid); }
 .severity-bar__segment--high { background: var(--high-solid); }
 .severity-bar__segment--medium { background: var(--medium-solid); }

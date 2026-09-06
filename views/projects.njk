@@ -38,7 +38,7 @@
             <div class="severity-bar" role="img"
                  aria-label="{{ project.openTotal }} hallazgos abiertos por gravedad">
               {% for segment in project.bar %}
-                <span class="severity-bar__segment severity-bar__segment--{{ segment.severity }} w-{{ segment.width }}{% if loop.last %} severity-bar__segment--fill{% endif %}"></span>
+                <span class="severity-bar__segment severity-bar__segment--{{ segment.severity }} w-{{ segment.width }}"></span>
               {% endfor %}
             </div>
           {% endif %}

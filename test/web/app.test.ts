@@ -567,3 +567,54 @@ describe('Security Inbox users', () => {
     expect(service.listProjects({ scope: 'all' })).toHaveLength(0);
   });
 });
+
+describe('Security Inbox request guards on the user routes', () => {
+  // Every case below is paired with a positive control: a suite that only asserts 403 passes
+  // just as happily when the request is malformed for an unrelated reason.
+  const userRoutes = [
+    { url: '/session/user', fields: { slug: 'tester' } },
+    { url: '/users', fields: { slug: 'nuevo' } },
+  ];
+
+  test('rejects every user route without a valid token, origin, site and host', async () => {
+    for (const { url, fields } of userRoutes) {
+      const token = await csrf();
+
+      const accepted = await post(url, { ...fields, _csrf: token });
+      expect(accepted.statusCode).toBe(303);
+
+      expect((await post(url, { ...fields, _csrf: 'no-es-el-token' })).statusCode).toBe(403);
+      expect((await post(url, fields)).statusCode).toBe(403);
+      expect((await post(url, { ...fields, _csrf: token }, {
+        headers: { origin: 'http://evil.example' },
+      })).statusCode).toBe(403);
+      expect((await post(url, { ...fields, _csrf: token }, {
+        headers: { 'sec-fetch-site': 'cross-site' },
+      })).statusCode).toBe(403);
+      expect((await post(url, { ...fields, _csrf: token }, {
+        headers: { host: 'example.com' },
+      })).statusCode).toBe(403);
+      expect((await post(url, { ...fields, _csrf: token }, { omitOrigin: true })).statusCode).toBe(403);
+    }
+  });
+
+  test('shares the severity bar out so the segments total exactly one bar', async () => {
+    const project = service.createProject({
+      name: 'Thirds',
+      description: 'Three severities, one finding each',
+      ownerId: testOwnerId(service),
+    });
+    for (const severity of ['critical', 'high', 'medium'] as const) {
+      service.registerFinding(registration(project.id, `bar-${severity}`, { severity }));
+    }
+
+    const page = await get('/');
+    const widths = [...page.body.matchAll(/severity-bar__segment[^"]*\sw-(\d+)"/g)]
+      .map(([, width]) => Number(width));
+
+    expect(widths).toHaveLength(3);
+    expect(widths.reduce((total, width) => total + width, 0)).toBe(100);
+    // Equal counts must not produce a segment that misrepresents its share.
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(5);
+  });
+});
