@@ -4,11 +4,15 @@ import { z, type ZodType } from 'zod';
 import { AppError, validationError } from '../core/errors.js';
 import { SecurityInboxService } from '../core/service.js';
 import { FINDING_STATUSES, SEVERITIES, type AppErrorCode } from '../core/types.js';
+import { ProjectDirectoryManager } from '../projects/directory-manager.js';
 import {
   addFindingNoteInputSchema,
+  browseProjectDirectoriesInputSchema,
   findingIdentitySchema,
   listFindingsInputSchema,
+  registerProjectDirectoryInputSchema,
   registerFindingInputSchema,
+  updateFindingInputSchema,
   updateFindingStatusInputSchema,
 } from '../core/validation.js';
 
@@ -19,6 +23,8 @@ const publicMessages: Record<AppErrorCode, string> = {
   IDEMPOTENCY_CONFLICT: 'Idempotency key conflict.',
   TERMINAL_NOTE_REQUIRED: 'A note is required for a terminal status.',
   NO_STATUS_CHANGE: 'Finding status is unchanged.',
+  DIRECTORY_INVALID: 'Directory is outside the configured project root.',
+  DIRECTORY_UNAVAILABLE: 'Directory is unavailable.',
 };
 
 const uuidSchema = z.string().uuid();
@@ -31,6 +37,7 @@ const projectSchema = z.object({
   name: z.string(),
   description: z.string(),
   repositoryReference: z.string().nullable(),
+  directoryPath: z.string().nullable(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
@@ -104,6 +111,8 @@ const errorSchema = z.object({
       'IDEMPOTENCY_CONFLICT',
       'TERMINAL_NOTE_REQUIRED',
       'NO_STATUS_CHANGE',
+      'DIRECTORY_INVALID',
+      'DIRECTORY_UNAVAILABLE',
       'INTERNAL_ERROR',
     ]),
     message: z.string(),
@@ -126,6 +135,26 @@ const listFindingsOutputSchema = z.union([
   errorSchema,
 ]);
 const findingOutputSchema = z.union([z.object({ finding: findingDetailSchema }), errorSchema]);
+const directoryEntrySchema = z.object({
+  name: z.string(),
+  relativePath: z.string(),
+  displayPath: z.string(),
+});
+const directoryListingSchema = z.object({
+  rootDisplayPath: z.string(),
+  relativePath: z.string(),
+  displayPath: z.string(),
+  parentRelativePath: z.string().nullable(),
+  directories: z.array(directoryEntrySchema),
+});
+const browseDirectoriesOutputSchema = z.union([
+  z.object({ listing: directoryListingSchema }),
+  errorSchema,
+]);
+const registerProjectOutputSchema = z.union([
+  z.object({ project: projectSchema, created: z.boolean() }),
+  errorSchema,
+]);
 
 function result(structuredContent: Record<string, unknown>, isError = false) {
   return {
@@ -159,15 +188,32 @@ function handle<T>(schema: ZodType<T>, input: unknown, operation: (value: T) => 
   }
 }
 
-export function createSecurityInboxMcpServer(service: SecurityInboxService): McpServer {
+export function createSecurityInboxMcpServer(
+  service: SecurityInboxService,
+  directories: ProjectDirectoryManager,
+): McpServer {
   const server = new McpServer({ name: 'security-inbox', version: '0.1.0' });
   const emptyInputSchema = z.object({}).strict();
 
   server.registerTool('list_projects', {
-    description: 'List Security Inbox projects and their open finding counts.',
+    description: 'List projects first to identify the correct stable project id and directory path.',
     inputSchema: advertisedInput(emptyInputSchema),
     outputSchema: listProjectsOutputSchema,
   }, async (input) => handle(emptyInputSchema, input, () => ({ projects: service.listProjects() })));
+
+  server.registerTool('browse_project_directories', {
+    description: 'Browse directories allowed by this Security Inbox instance before registering a project.',
+    inputSchema: advertisedInput(browseProjectDirectoriesInputSchema),
+    outputSchema: browseDirectoriesOutputSchema,
+  }, async (input) => handle(browseProjectDirectoriesInputSchema, input, (value) => ({
+    listing: directories.browse(value.relativePath),
+  })));
+
+  server.registerTool('register_project', {
+    description: 'Register a selected directory as a project; its name and stored path are derived automatically.',
+    inputSchema: advertisedInput(registerProjectDirectoryInputSchema),
+    outputSchema: registerProjectOutputSchema,
+  }, async (input) => handle(registerProjectDirectoryInputSchema, input, (value) => directories.register(value)));
 
   server.registerTool('register_finding', {
     description: 'Register an unconfirmed security finding after checking for existing findings.',
@@ -186,6 +232,12 @@ export function createSecurityInboxMcpServer(service: SecurityInboxService): Mcp
     inputSchema: advertisedInput(findingIdentitySchema),
     outputSchema: findingOutputSchema,
   }, async (input) => handle(findingIdentitySchema, input, (value) => ({ finding: service.getFinding(value) })));
+
+  server.registerTool('update_finding', {
+    description: 'Edit mutable finding details within the project and record an optional edit note.',
+    inputSchema: advertisedInput(updateFindingInputSchema),
+    outputSchema: findingOutputSchema,
+  }, async (input) => handle(updateFindingInputSchema, input, (value) => ({ finding: service.updateFinding(value) })));
 
   server.registerTool('update_finding_status', {
     description: 'Change a finding status; resolving or dismissing requires a verification note.',

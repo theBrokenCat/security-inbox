@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 
 import { SecurityInboxService } from '../core/service.js';
+import { ProjectDirectoryManager } from '../projects/directory-manager.js';
 import { buildWebApp, resolveListenHost } from './app.js';
 
 type StartWebServerOptions = {
@@ -59,7 +60,11 @@ export async function startWebServer({
 
   try {
     service = createService(environment.SECURITY_INBOX_DB);
-    app = createApp({ service, port });
+    const directories = new ProjectDirectoryManager(service, {
+      accessibleRoot: environment.SECURITY_INBOX_PROJECTS_ROOT,
+      displayRoot: environment.SECURITY_INBOX_PROJECTS_DISPLAY_ROOT,
+    });
+    app = createApp({ service, directories, port });
     await app.listen({ host: resolveListenHost(environment), port });
     listening = true;
     signals.once('SIGINT', onSignal);

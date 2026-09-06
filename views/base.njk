@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrfToken }}">
   <title>{% block title %}Security Inbox{% endblock %}</title>
   <link rel="stylesheet" href="/assets/styles.css">
 </head>
@@ -11,9 +12,9 @@
   <header class="masthead">
     <a class="brand" href="/" aria-label="Security Inbox, proyectos">
       <span class="brand__mark" aria-hidden="true">SI</span>
-      <span><strong>Security Inbox</strong><small>cuaderno local de sospechas</small></span>
+      <span><strong>Security Inbox</strong><small>Gestión local de hallazgos</small></span>
     </a>
-    <span class="local-badge">Solo local</span>
+    <span class="local-badge">Entorno local</span>
   </header>
   <main id="contenido" class="page-shell">
     {% block content %}{% endblock %}

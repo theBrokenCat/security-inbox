@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -13,15 +13,19 @@ import { SecurityInboxService } from '../../src/core/service.js';
 
 const expectedTools = [
   'add_finding_note',
+  'browse_project_directories',
   'get_finding',
   'list_findings',
   'list_projects',
   'register_finding',
+  'register_project',
+  'update_finding',
   'update_finding_status',
 ];
 
 let client: Client;
 let databasePath: string;
+let projectsRoot: string;
 let projectId: string;
 let secondProjectId: string;
 let tempDirectory: string;
@@ -32,6 +36,8 @@ let stderr = '';
 beforeAll(async () => {
   tempDirectory = mkdtempSync(join(tmpdir(), 'security-inbox-mcp-'));
   databasePath = join(tempDirectory, 'inbox.sqlite');
+  projectsRoot = join(tempDirectory, 'projects');
+  mkdirSync(join(projectsRoot, 'Gamma', 'nested'), { recursive: true });
   const service = new SecurityInboxService(databasePath);
   projectId = service.createProject({
     name: 'Alpha',
@@ -47,7 +53,12 @@ beforeAll(async () => {
   transport = new StdioClientTransport({
     command: process.execPath,
     args: [resolve('dist/src/mcp/server.js')],
-    env: { ...getDefaultEnvironment(), SECURITY_INBOX_DB: databasePath },
+    env: {
+      ...getDefaultEnvironment(),
+      SECURITY_INBOX_DB: databasePath,
+      SECURITY_INBOX_PROJECTS_ROOT: projectsRoot,
+      SECURITY_INBOX_PROJECTS_DISPLAY_ROOT: '/srv/projects',
+    },
     stderr: 'pipe',
   });
   transport.stderr?.on('data', (chunk) => { stderr += String(chunk); });
@@ -64,7 +75,7 @@ afterAll(async () => {
   rmSync(tempDirectory, { recursive: true, force: true });
 });
 
-test('exposes exactly the six Security Inbox tools over stdio', async () => {
+test('exposes exactly the nine Security Inbox tools over stdio', async () => {
   const { tools } = await client.listTools();
 
   expect(tools.map(({ name }) => name).sort()).toEqual(expectedTools);
@@ -73,6 +84,10 @@ test('exposes exactly the six Security Inbox tools over stdio', async () => {
       expect.arrayContaining(['projectId', 'findingId']),
     );
   }
+  expect(tools.find(({ name }) => name === 'register_project')?.inputSchema.required).toContain('relativePath');
+  expect(tools.find(({ name }) => name === 'update_finding')?.inputSchema.required).toEqual(
+    expect.arrayContaining(['projectId', 'findingId']),
+  );
 });
 
 test('negotiates the modern v2 stdio protocol', () => {
@@ -88,11 +103,78 @@ test('advertises useful output schemas for every tool', async () => {
     expect(JSON.stringify(tool.outputSchema)).toContain('VALIDATION_ERROR');
   }
   expect(JSON.stringify(tools.find(({ name }) => name === 'list_projects')?.outputSchema)).toContain('openCounts');
+  expect(JSON.stringify(tools.find(({ name }) => name === 'browse_project_directories')?.outputSchema))
+    .toContain('rootDisplayPath');
+  expect(JSON.stringify(tools.find(({ name }) => name === 'register_project')?.outputSchema))
+    .toContain('directoryPath');
   expect(JSON.stringify(tools.find(({ name }) => name === 'register_finding')?.outputSchema)).toContain('possibleDuplicates');
   expect(JSON.stringify(tools.find(({ name }) => name === 'list_findings')?.outputSchema)).toContain('updatedAt');
-  for (const name of ['get_finding', 'update_finding_status', 'add_finding_note']) {
+  for (const name of ['get_finding', 'update_finding', 'update_finding_status', 'add_finding_note']) {
     expect(JSON.stringify(tools.find((tool) => tool.name === name)?.outputSchema)).toContain('history');
   }
+});
+
+test('lets an agent browse and register a directory, then edit its finding', async () => {
+  const root = await client.callTool({ name: 'browse_project_directories', arguments: {} });
+  expect(root.structuredContent).toMatchObject({
+    listing: {
+      rootDisplayPath: '/srv/projects',
+      relativePath: '',
+      directories: [{ name: 'Gamma', relativePath: 'Gamma', displayPath: '/srv/projects/Gamma' }],
+    },
+  });
+
+  const nested = await client.callTool({
+    name: 'browse_project_directories',
+    arguments: { relativePath: 'Gamma' },
+  });
+  expect(nested.structuredContent).toMatchObject({
+    listing: { relativePath: 'Gamma', parentRelativePath: '', directories: [{ name: 'nested' }] },
+  });
+
+  const registered = await client.callTool({
+    name: 'register_project',
+    arguments: { relativePath: 'Gamma', description: 'Registered by an agent' },
+  });
+  expect(registered.structuredContent).toMatchObject({
+    created: true,
+    project: { name: 'Gamma', description: 'Registered by an agent', directoryPath: '/srv/projects/Gamma' },
+  });
+  const project = (registered.structuredContent as { project: { id: string } }).project;
+  const retry = await client.callTool({ name: 'register_project', arguments: { relativePath: 'Gamma' } });
+  expect(retry.structuredContent).toMatchObject({ created: false, project: { id: project.id } });
+
+  const created = await client.callTool({
+    name: 'register_finding',
+    arguments: {
+      projectId: project.id,
+      idempotencyKey: 'agent-edit',
+      title: 'Original title',
+      description: 'Original description',
+      severity: 'low',
+      evidence: 'Synthetic evidence',
+      origin: 'agent-e2e',
+    },
+  });
+  const findingId = (created.structuredContent as { finding: { id: string } }).finding.id;
+  const edited = await client.callTool({
+    name: 'update_finding',
+    arguments: {
+      projectId: project.id,
+      findingId,
+      title: 'Edited by agent',
+      severity: 'medium',
+      note: 'Updated through MCP.',
+    },
+  });
+  expect(edited.structuredContent).toMatchObject({
+    finding: {
+      id: findingId,
+      title: 'Edited by agent',
+      severity: 'medium',
+      history: [{ kind: 'created' }, { kind: 'edited', note: 'Updated through MCP.' }],
+    },
+  });
 });
 
 test('returns invalid inputs as structured generic errors without echoing them', async () => {
@@ -114,12 +196,10 @@ test('returns invalid inputs as structured generic errors without echoing them',
 test('runs the finding workflow with idempotency, isolation, history, safe errors, and clean stdio', async () => {
   const projects = await client.callTool({ name: 'list_projects', arguments: {} });
   expect(projects.isError).not.toBe(true);
-  expect(projects.structuredContent).toMatchObject({
-    projects: [
+  expect((projects.structuredContent as { projects: unknown[] }).projects).toEqual(expect.arrayContaining([
       { id: projectId, name: 'Alpha' },
       { id: secondProjectId, name: 'Beta' },
-    ],
-  });
+  ].map((project) => expect.objectContaining(project))));
 
   const emptySearch = await client.callTool({
     name: 'list_findings',

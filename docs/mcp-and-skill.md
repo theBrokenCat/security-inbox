@@ -9,7 +9,7 @@ npm install
 npm run build
 ```
 
-El entrypoint compilado es `dist/src/mcp/server.js`. El proceso habla MCP por stdin/stdout; stdout queda reservado al protocolo. No uses `npm run mcp`: npm imprime su banner en stdout antes de iniciar el servidor. `SECURITY_INBOX_DB` selecciona el archivo SQLite y, si se omite, usa `data/security-inbox.sqlite` relativo al directorio de trabajo.
+El entrypoint compilado es `dist/src/mcp/server.js`. El proceso habla MCP por stdin/stdout; stdout queda reservado al protocolo. No uses `npm run mcp`: npm imprime su banner en stdout antes de iniciar el servidor. `SECURITY_INBOX_DB` selecciona el archivo SQLite. `SECURITY_INBOX_PROJECTS_ROOT` limita los directorios navegables y por defecto usa el directorio de lanzamiento; `SECURITY_INBOX_PROJECTS_DISPLAY_ROOT` permite guardar la ruta real cuando la raíz accesible está montada en otra ubicación.
 
 ## Conexión nativa
 
@@ -28,14 +28,21 @@ Configuración equivalente para un cliente con `mcpServers`:
       "command": "node",
       "args": ["/absolute/path/to/security-inbox/dist/src/mcp/server.js"],
       "env": {
-        "SECURITY_INBOX_DB": "/absolute/path/to/security-inbox.sqlite"
+        "SECURITY_INBOX_DB": "/absolute/path/to/security-inbox.sqlite",
+        "SECURITY_INBOX_PROJECTS_ROOT": "/absolute/path/to/projects"
       }
     }
   }
 }
 ```
 
-Reinicia o recarga el cliente después de guardar la configuración. La conexión correcta muestra exactamente `list_projects`, `register_finding`, `list_findings`, `get_finding`, `update_finding_status` y `add_finding_note`.
+Reinicia o recarga el cliente después de guardar la configuración. La conexión correcta muestra nueve herramientas: `list_projects`, `browse_project_directories`, `register_project`, `register_finding`, `list_findings`, `get_finding`, `update_finding`, `update_finding_status` y `add_finding_note`.
+
+Flujo recomendado para agentes:
+
+1. `list_projects` y comparar `directoryPath`.
+2. Si falta, `browse_project_directories` y `register_project` con el `relativePath` devuelto.
+3. Conservar el `projectId`, buscar posibles duplicados y gestionar detalle, edición, estado y notas con ese ID.
 
 ## Ejemplo por SSH y Docker Compose
 
@@ -85,4 +92,4 @@ Inicia una sesión nueva o recarga las skills. Invócala como `$security-inbox`;
 ## Compatibilidad verificada
 
 La prueba E2E usa exclusivamente `@modelcontextprotocol/client` 2.0.0 con `StdioClientTransport`, negocia la revisión moderna `2026-07-28`, recorre éxito y error y comprueba cierre limpio sin ruido de protocolo. No se afirma compatibilidad con otros clientes.
-El mismo cliente también recorrió alta, retry idempotente, cambio de estado y detalle mediante la receta SSH/Compose anterior en `arturo-dev`. No se afirma compatibilidad con otros clientes ni hosts.
+El mismo cliente recorrió mediante SSH/Compose en `arturo-dev` la navegación de directorios, alta y retry de proyecto, creación y edición de un hallazgo. No se afirma compatibilidad con otros clientes ni hosts.

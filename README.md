@@ -20,6 +20,10 @@ npm ci
 La base por defecto es `data/security-inbox.sqlite`. Se puede cambiar con
 `SECURITY_INBOX_DB`.
 
+La web registra proyectos seleccionando carpetas. En ejecución nativa,
+`SECURITY_INBOX_PROJECTS_ROOT` limita el árbol navegable y por defecto es el
+directorio desde el que se lanza la aplicación.
+
 ## Comandos locales
 
 ```sh
@@ -38,9 +42,10 @@ con `demo-route-fixed-key` devuelve el mismo UUID.
 
 ## Docker Compose
 
-La imagen compila con `npm ci` en `node:24-bookworm`, ejecuta como el usuario no
-privilegiado `node` y monta únicamente `./data` en `/app/data`. Compose crea el
-bridge propio del proyecto; la web publica solo loopback del host.
+La imagen compila con `npm ci` en `node:24-bookworm` y ejecuta como el usuario no
+privilegiado `node`. `./data` se monta con escritura; la raíz de proyectos se
+monta read-only en `/projects`. Compose crea el bridge propio del proyecto y la
+web publica solo loopback del host.
 
 ```sh
 mkdir -p data
@@ -51,6 +56,12 @@ docker compose run --rm -T app
 docker compose up -d web
 curl --fail http://127.0.0.1:3300/
 docker compose ps
+```
+
+La raíz Docker predeterminada es `/root/Proyectos`. Para otro host:
+
+```sh
+SECURITY_INBOX_PROJECTS_HOST_ROOT=/ruta/absoluta/Proyectos docker compose up -d web
 ```
 
 Para probar MCP por stdio, conserva `-T` para no asignar un pseudo-terminal:
@@ -76,14 +87,15 @@ de contenedores y red, pero conserva `./data`.
 
 ## Flujo operativo completo
 
-1. Ejecuta el seed y arranca `web`.
-2. Lista proyectos y selecciona el proyecto por el UUID mostrado; no uses el
-   nombre como identidad.
-3. Desde el cliente MCP, lista hallazgos, comprueba candidatos parecidos y
+1. Arranca `web`, pulsa **Añadir proyecto** y selecciona una carpeta; el nombre
+   y la ubicación se registran automáticamente.
+2. Un agente comienza con `list_projects`. Si falta la carpeta, usa
+   `browse_project_directories` y `register_project`; después conserva el UUID.
+3. Lista hallazgos, comprueba candidatos parecidos y
    registra uno con una clave de idempotencia estable.
 4. Repite la misma petición: debe devolver el mismo UUID y no crear otra fila.
-5. Cambia el estado con una nota cuando corresponda y consulta el detalle para
-   comprobar el historial append-only.
+5. Usa `update_finding`, cambia el estado con una nota cuando corresponda y
+   consulta el detalle para comprobar el historial append-only.
 6. Reinicia `web` y vuelve a conectar MCP; el UUID y los eventos deben seguir en
    `./data`.
 
@@ -107,8 +119,8 @@ El destino operativo previsto es `arturo-dev:/root/Proyectos/security-inbox`.
 - Solo se documenta Node 24, Docker Compose v2 y el flujo remoto indicado; no se
   afirma compatibilidad con otros hosts.
 - No se incluyen secretos ni credenciales en fixtures, imagen, Compose o docs.
-- El cliente MCP y el túnel SSH son recetas operativas; no se afirma que hayan
-  sido ejecutados por esta verificación local.
+- No se siguen symlinks que salgan de la raíz configurada y la web nunca lee el
+  contenido de los archivos del proyecto.
 
 Para apagar el stack: `docker compose down`. La eliminación de `./data` es una
 acción separada y borra la persistencia local.

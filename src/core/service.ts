@@ -16,6 +16,7 @@ import type {
   ListFindingsInput,
   Project,
   ProjectSummary,
+  RegisterProjectDirectoryResult,
   RegisterFindingInput,
   RegisterFindingResult,
   Scalar,
@@ -27,6 +28,7 @@ import {
   findingIdentitySchema,
   listFindingsInputSchema,
   registerFindingInputSchema,
+  resolvedProjectDirectoryInputSchema,
   updateFindingInputSchema,
   updateFindingStatusInputSchema,
 } from './validation.js';
@@ -100,11 +102,36 @@ export class SecurityInboxService {
       name: value.name,
       description: value.description,
       repositoryReference: value.repositoryReference ?? null,
+      directoryPath: null,
       createdAt: now,
       updatedAt: now,
     };
     this.repository.insertProject(project);
     return project;
+  }
+
+  registerProjectDirectory(input: {
+    name: string;
+    description: string;
+    directoryPath: string;
+  }): RegisterProjectDirectoryResult {
+    const value = parse(resolvedProjectDirectoryInputSchema, input);
+    return this.repository.immediate(() => {
+      const existing = this.repository.findProjectByDirectoryPath(value.directoryPath);
+      if (existing) return { project: existing, created: false };
+      const now = timestampAfter();
+      const project: Project = {
+        id: randomUUID(),
+        name: value.name,
+        description: value.description,
+        repositoryReference: null,
+        directoryPath: value.directoryPath,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.repository.insertProject(project);
+      return { project, created: true };
+    });
   }
 
   listProjects(): ProjectSummary[] {

@@ -19,6 +19,7 @@ export type Project = {
   name: string;
   description: string;
   repositoryReference: string | null;
+  directoryPath: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,6 +33,29 @@ export type CreateProjectInput = {
   name: string;
   description: string;
   repositoryReference?: string | null;
+};
+export type ResolvedProjectDirectoryInput = {
+  name: string;
+  description: string;
+  directoryPath: string;
+};
+export type RegisterProjectDirectoryResult = { project: Project; created: boolean };
+
+export type DirectoryEntry = {
+  name: string;
+  relativePath: string;
+  displayPath: string;
+};
+export type DirectoryListing = {
+  rootDisplayPath: string;
+  relativePath: string;
+  displayPath: string;
+  parentRelativePath: string | null;
+  directories: DirectoryEntry[];
+};
+export type RegisterProjectDirectoryInput = {
+  relativePath: string;
+  description?: string | null;
 };
 
 export type Finding = {
@@ -123,7 +147,9 @@ export type AppErrorCode =
   | 'FINDING_NOT_FOUND'
   | 'IDEMPOTENCY_CONFLICT'
   | 'TERMINAL_NOTE_REQUIRED'
-  | 'NO_STATUS_CHANGE';
+  | 'NO_STATUS_CHANGE'
+  | 'DIRECTORY_INVALID'
+  | 'DIRECTORY_UNAVAILABLE';
 export type PublicAppError = {
   code: AppErrorCode;
   message: string;

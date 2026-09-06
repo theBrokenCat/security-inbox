@@ -17,3 +17,7 @@
 - En Linux, corrige recursivamente `./data` a UID/GID 1000 antes de ejecutar los
   contenedores. Cambiar solo la carpeta no arregla un archivo SQLite heredado
   `root:root`: las lecturas pasan, pero una nueva escritura falla.
+- El alta de proyectos no pertenece a la portada: usa una página dedicada que
+  seleccione una carpeta, derive el nombre y conserve `directoryPath`.
+- La UI acordada es profesional neutra: sans-serif, canvas gris, superficies
+  blancas y navy; evita metáforas de papel, serif y color decorativo dominante.

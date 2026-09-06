@@ -37,3 +37,33 @@
 ## Review
 
 Revisión final: pass, con 0 Blocking y 0 Important; quedan dos observaciones Minor documentadas.
+
+---
+
+## Iteración 2 — Directorios y rediseño
+
+### Fase 5 — Directorios y migración v2
+
+- [x] Añadir `directoryPath` y migración v2 sin pérdida de datos.
+- [x] Implementar exploración confinada e idempotencia por ruta.
+- [x] Verificar bases nuevas, upgrade v1, traversal y symlinks.
+
+### Fase 6 — Web y agentes
+
+- [x] Mover el alta a una página dedicada con explorador.
+- [x] Añadir browse/register project y update finding al MCP.
+- [x] Actualizar skill y documentación con el flujo completo para agentes.
+
+### Fase 7 — Rediseño visual
+
+- [x] Sustituir el lenguaje de cuaderno por interfaz profesional neutra.
+- [x] Verificar navegación, formularios, estados vacíos y responsive.
+
+### Fase 8 — Demo y revisión
+
+- [x] Ejecutar suite, typecheck, build, skill y Compose.
+- [x] Verificar directorio y herramientas con cliente MCP real en `arturo-dev`.
+- [x] Hacer QA visual por túnel y revisar el diff de forma independiente.
+- [x] Dejar cambios staged, sin commit ni push.
+
+Revisión iteración 2: pass, con 0 Blocking y 0 Important.

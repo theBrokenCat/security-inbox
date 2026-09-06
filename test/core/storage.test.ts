@@ -13,6 +13,19 @@ import { openDatabase, type SqliteDatabase } from '../../src/storage/database.js
 
 const execFileAsync = promisify(execFile);
 
+function downgradeProjectsToV1(path: string): void {
+  const legacy = new BetterSqlite3(path);
+  const columns = legacy.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>;
+  if (columns.some(({ name }) => name === 'directory_path')) {
+    legacy.exec(`
+      DROP INDEX IF EXISTS idx_projects_directory_path;
+      ALTER TABLE projects DROP COLUMN directory_path;
+    `);
+  }
+  legacy.pragma('user_version = 1');
+  legacy.close();
+}
+
 test('configures SQLite and repeats critical invariants with database constraints', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-schema-'));
   const path = join(directory, 'inbox.sqlite');
@@ -122,7 +135,7 @@ test('does not rewrite journal mode when the database is already in WAL', () => 
   }
 });
 
-test('retries one transient SQLITE_BUSY while enabling WAL', () => {
+test('retries bounded transient SQLITE_BUSY errors while enabling WAL', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-wal-busy-'));
   const path = join(directory, 'inbox.sqlite');
   const pragma = BetterSqlite3.prototype.pragma;
@@ -132,7 +145,7 @@ test('retries one transient SQLITE_BUSY while enabling WAL', () => {
     source,
     options,
   ) {
-    if (source === 'journal_mode = WAL' && walWrites++ === 0) {
+    if (source === 'journal_mode = WAL' && walWrites++ < 3) {
       throw new BetterSqlite3.SqliteError('database is locked', 'SQLITE_BUSY');
     }
     return pragma.call(this, source, options);
@@ -141,7 +154,7 @@ test('retries one transient SQLITE_BUSY while enabling WAL', () => {
   try {
     const database = openDatabase(path);
     try {
-      expect(walWrites).toBe(2);
+      expect(walWrites).toBe(4);
       expect(database.pragma('journal_mode', { simple: true })).toBe('wal');
     } finally {
       database.close();
@@ -182,18 +195,72 @@ test('does not retry non-busy WAL errors and closes the database', () => {
   }
 });
 
+test('upgrades a v1 database to v2 without changing existing project ids', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'security-inbox-v1-upgrade-'));
+  const path = join(directory, 'inbox.sqlite');
+  const service = new SecurityInboxService(path);
+  const project = service.createProject({ name: 'Existing', description: 'Keep me' });
+  service.close();
+
+  downgradeProjectsToV1(path);
+
+  try {
+    const upgraded = openDatabase(path);
+    try {
+      expect(upgraded.pragma('user_version', { simple: true })).toBe(2);
+      expect((upgraded.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>)
+        .map(({ name }) => name)).toContain('directory_path');
+      expect(upgraded.prepare('SELECT id, directory_path FROM projects').get()).toEqual({
+        id: project.id,
+        directory_path: null,
+      });
+    } finally {
+      upgraded.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('rolls back a failed v1 to v2 migration without changing the project', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'security-inbox-v2-rollback-'));
+  const path = join(directory, 'inbox.sqlite');
+  const service = new SecurityInboxService(path);
+  const project = service.createProject({ name: 'Existing', description: 'Keep me' });
+  service.close();
+  downgradeProjectsToV1(path);
+  const conflict = new BetterSqlite3(path);
+  conflict.exec('CREATE TABLE idx_projects_directory_path (value TEXT) STRICT');
+  conflict.close();
+
+  try {
+    expect(() => openDatabase(path)).toThrow();
+    const reopened = new BetterSqlite3(path);
+    try {
+      expect(reopened.pragma('user_version', { simple: true })).toBe(1);
+      expect((reopened.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>)
+        .map(({ name }) => name)).not.toContain('directory_path');
+      expect(reopened.prepare('SELECT id FROM projects').get()).toEqual({ id: project.id });
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('rejects a future schema version without downgrading it', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-future-schema-'));
   const path = join(directory, 'inbox.sqlite');
   const seed = new BetterSqlite3(path);
-  seed.pragma('user_version = 2');
+  seed.pragma('user_version = 3');
   seed.close();
 
   try {
-    expect(() => openDatabase(path)).toThrow(/version 2/i);
+    expect(() => openDatabase(path)).toThrow(/version 3/i);
     const reopened = new BetterSqlite3(path);
     try {
-      expect(reopened.pragma('user_version', { simple: true })).toBe(2);
+      expect(reopened.pragma('user_version', { simple: true })).toBe(3);
     } finally {
       reopened.close();
     }

@@ -17,6 +17,7 @@ type ProjectRow = {
   name: string;
   description: string;
   repository_reference: string | null;
+  directory_path: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -79,6 +80,7 @@ function toProject(row: ProjectRow): Project {
     name: row.name,
     description: row.description,
     repositoryReference: row.repository_reference,
+    directoryPath: row.directory_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -133,9 +135,19 @@ export class SecurityInboxRepository {
 
   insertProject(project: Project): void {
     this.database.prepare(`
-      INSERT INTO projects (id, name, description, repository_reference, created_at, updated_at)
-      VALUES (@id, @name, @description, @repositoryReference, @createdAt, @updatedAt)
+      INSERT INTO projects (
+        id, name, description, repository_reference, directory_path, created_at, updated_at
+      ) VALUES (
+        @id, @name, @description, @repositoryReference, @directoryPath, @createdAt, @updatedAt
+      )
     `).run(project);
+  }
+
+  findProjectByDirectoryPath(directoryPath: string): Project | undefined {
+    const row = this.database.prepare(
+      'SELECT * FROM projects WHERE directory_path = ?',
+    ).get(directoryPath) as ProjectRow | undefined;
+    return row ? toProject(row) : undefined;
   }
 
   listProjects(): ProjectSummary[] {

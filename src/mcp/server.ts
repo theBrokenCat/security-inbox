@@ -1,11 +1,16 @@
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import { SecurityInboxService } from '../core/service.js';
+import { ProjectDirectoryManager } from '../projects/directory-manager.js';
 import { createSecurityInboxMcpServer } from './factory.js';
 
 function buildServer() {
   const service = new SecurityInboxService();
-  const server = createSecurityInboxMcpServer(service);
+  const directories = new ProjectDirectoryManager(service, {
+    accessibleRoot: process.env.SECURITY_INBOX_PROJECTS_ROOT,
+    displayRoot: process.env.SECURITY_INBOX_PROJECTS_DISPLAY_ROOT,
+  });
+  const server = createSecurityInboxMcpServer(service, directories);
   server.server.onclose = () => { service.close(); };
   return server;
 }

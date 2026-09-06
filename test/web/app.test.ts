@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -8,19 +8,30 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { SecurityInboxService } from '../../src/core/service.js';
 import type { RegisterFindingInput } from '../../src/core/types.js';
+import { ProjectDirectoryManager } from '../../src/projects/directory-manager.js';
 import { buildWebApp, resolveListenHost } from '../../src/web/app.js';
 
 const PORT = 3300;
 const HOST = `127.0.0.1:${PORT}`;
 
 let directory: string;
+let projectsRoot: string;
 let service: SecurityInboxService;
 let app: FastifyInstance;
 
 beforeEach(async () => {
   directory = mkdtempSync(join(tmpdir(), 'security-inbox-web-'));
+  projectsRoot = join(directory, 'projects');
+  mkdirSync(join(projectsRoot, 'alpha', 'nested'), { recursive: true });
   service = new SecurityInboxService(join(directory, 'inbox.sqlite'));
-  app = buildWebApp({ service, port: PORT });
+  app = buildWebApp({
+    service,
+    directories: new ProjectDirectoryManager(service, {
+      accessibleRoot: projectsRoot,
+      displayRoot: '/srv/projects',
+    }),
+    port: PORT,
+  });
   await app.ready();
 });
 
@@ -56,7 +67,8 @@ async function get(url: string, host = HOST) {
 }
 
 function csrfFrom(html: string): string {
-  const token = html.match(/name="_csrf" value="([^"]+)"/)?.[1];
+  const token = html.match(/name="_csrf" value="([^"]+)"/)?.[1]
+    ?? html.match(/name="csrf-token" content="([^"]+)"/)?.[1];
   expect(token).toMatch(/^[0-9a-f]{64}$/);
   return token!;
 }
@@ -87,29 +99,56 @@ async function post(
 }
 
 describe('Security Inbox web adapter', () => {
-  test('renders an empty project notebook and creates a project with an escaped description', async () => {
+  test('keeps creation off the dashboard and registers a selected directory on its own page', async () => {
     const empty = await get('/');
 
     expect(empty.statusCode).toBe(200);
     expect(empty.body).toContain('Todavía no hay proyectos');
-    expect(empty.body).toContain('name="_csrf"');
+    expect(empty.body).toContain('href="/projects/new"');
+    expect(empty.body).not.toContain('name="name"');
+    expect(empty.body).not.toContain('action="/projects"');
     expect(empty.body).not.toContain('<script');
     expect(empty.headers['content-security-policy']).toContain("default-src 'none'");
     expect(empty.headers['content-security-policy']).toContain("style-src 'self'");
 
-    const created = await post('/projects', {
-      _csrf: csrfFrom(empty.body),
-      name: 'Cuaderno principal',
+    const rootPicker = await get('/projects/new');
+    expect(rootPicker.statusCode).toBe(200);
+    expect(rootPicker.body).toContain('/srv/projects');
+    expect(rootPicker.body).toContain('href="/projects/new?path=alpha"');
+    expect(rootPicker.body).not.toContain('Seleccionar esta carpeta');
+
+    const selected = await get('/projects/new?path=alpha');
+    expect(selected.statusCode).toBe(200);
+    expect(selected.body).toContain('/srv/projects/alpha');
+    expect(selected.body).toContain('href="/projects/new?path=alpha%2Fnested"');
+    expect(selected.body).toContain('Seleccionar esta carpeta');
+    expect(selected.body).not.toContain('name="name"');
+    expect(selected.body.indexOf('Seleccionar esta carpeta')).toBeLessThan(
+      selected.body.indexOf('aria-label="Directorios"'),
+    );
+
+    const created = await post('/projects/register', {
+      _csrf: csrfFrom(selected.body),
+      relativePath: 'alpha',
       description: '<script>alert("project")</script>',
-      repositoryReference: 'git@example.test:team/app.git',
     });
 
     expect(created.statusCode).toBe(303);
-    expect(created.headers.location).toBe('/');
+    const project = service.listProjects()[0]!;
+    expect(created.headers.location).toBe(`/projects/${project.id}/findings?created=1`);
     const page = await get('/');
-    expect(page.body).toContain('Cuaderno principal');
+    expect(page.body).toContain('alpha');
+    expect(page.body).toContain('/srv/projects/alpha');
     expect(page.body).toContain('&lt;script&gt;alert(&quot;project&quot;)&lt;/script&gt;');
     expect(page.body).not.toContain('<script>alert');
+    expect(service.listProjects()).toHaveLength(1);
+
+    const retry = await post('/projects/register', {
+      _csrf: csrfFrom(selected.body),
+      relativePath: 'alpha',
+      description: 'Ignored on retry',
+    });
+    expect(retry.headers.location).toBe(`/projects/${project.id}/findings?created=0`);
     expect(service.listProjects()).toHaveLength(1);
   });
 
@@ -336,8 +375,13 @@ describe('Security Inbox web adapter', () => {
   ])('preserves Fastify $status for $name without echoing details', async ({ status, title, contentType, payload }) => {
     const response = await app.inject({
       method: 'POST',
-      url: '/projects',
-      headers: { host: HOST, 'content-type': contentType },
+      url: '/projects/register',
+      headers: {
+        host: HOST,
+        origin: `http://${HOST}`,
+        'sec-fetch-site': 'same-origin',
+        'content-type': contentType,
+      },
       payload,
     });
 
@@ -359,22 +403,20 @@ describe('Security Inbox web adapter', () => {
     ];
 
     for (const [name, overrides] of cases) {
-      const response = await post('/projects', {
+      const response = await post('/projects/register', {
         _csrf: token,
-        name,
-        description: 'Must be rejected',
-        repositoryReference: '',
+        relativePath: 'alpha',
+        description: name,
       }, overrides);
       expect(response.statusCode, name).toBe(403);
       expect(response.body, name).toContain('Solicitud rechazada');
     }
 
     for (const submitted of ['', 'wrong', 'f'.repeat(10_000)]) {
-      const response = await post('/projects', {
+      const response = await post('/projects/register', {
         _csrf: submitted,
-        name: 'Bad token',
-        description: 'Must be rejected',
-        repositoryReference: '',
+        relativePath: 'alpha',
+        description: 'Bad token',
       });
       expect(response.statusCode).toBe(403);
     }
@@ -384,14 +426,20 @@ describe('Security Inbox web adapter', () => {
 
     for (const host of [`localhost:${PORT}`, `[::1]:${PORT}`]) {
       const page = await get('/', host);
-      const response = await post('/projects', {
+      const response = await post('/projects/register', {
         _csrf: csrfFrom(page.body),
-        name: `Allowed ${host}`,
-        description: 'Legitimate loopback request',
-        repositoryReference: '',
+        relativePath: 'alpha',
+        description: `Allowed ${host}`,
       }, { headers: { host, origin: `http://${host}`, 'sec-fetch-site': 'same-origin' } });
       expect(response.statusCode).toBe(303);
     }
+
+    const opaqueOrigin = await post('/projects/register', {
+      _csrf: token,
+      relativePath: 'alpha',
+      description: 'Opaque browser origin',
+    }, { headers: { origin: 'null', 'sec-fetch-site': 'same-origin' } });
+    expect(opaqueOrigin.statusCode).toBe(303);
   });
 
   test('serves only local CSS and resolves the only two permitted listen hosts', async () => {
@@ -400,6 +448,18 @@ describe('Security Inbox web adapter', () => {
     expect(css.headers['content-type']).toContain('text/css');
     expect(css.body).toBe(readFileSync(join(process.cwd(), 'public/styles.css'), 'utf8'));
     expect(css.body).not.toMatch(/https?:\/\//);
+    expect(css.body).not.toMatch(/repeating-linear-gradient|Georgia|rotate\(/);
+    expect(css.body).toContain('--canvas:');
+    expect(css.body).toContain('"Avenir Next"');
+    expect(css.body).toContain('outline: 3px solid var(--focus)');
+    expect(css.body).toContain('--medium: #704b00');
+    expect(css.body).toMatch(/summary\s*\{[^}]*min-height:\s*2\.75rem/s);
+    expect(readFileSync(join(process.cwd(), 'views/project-new.njk'), 'utf8'))
+      .not.toContain('Puedes seleccionar esta ubicación');
+
+    const projects = await get('/');
+    expect(projects.body).not.toMatch(/cuaderno|índice de investigación/i);
+    expect(projects.body).toContain('Gestión local de hallazgos');
 
     expect(resolveListenHost({})).toBe('127.0.0.1');
     expect(resolveListenHost({ SECURITY_INBOX_CONTAINER: 'true' })).toBe('0.0.0.0');

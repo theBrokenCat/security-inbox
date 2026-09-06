@@ -1,0 +1,44 @@
+{% extends "base.njk" %}
+{% block title %}Añadir proyecto · Security Inbox{% endblock %}
+{% block content %}
+  <nav class="breadcrumbs" aria-label="Migas de pan">
+    <a href="/">Proyectos</a><span>/</span><a href="/projects/new">Añadir proyecto</a>
+    {% for crumb in listing.breadcrumbs %}<span>/</span><a href="{{ crumb.href }}">{{ crumb.name }}</a>{% endfor %}
+  </nav>
+
+  <section class="page-heading page-heading--compact">
+    <div>
+      <h1>Añadir proyecto</h1>
+      <p class="lede">Navega por las carpetas disponibles y selecciona la del proyecto.</p>
+    </div>
+  </section>
+
+  <section class="directory-picker" aria-labelledby="directory-title">
+    <header class="directory-picker__header">
+      <div><span class="field-hint">Ubicación actual</span><code id="directory-title">{{ listing.displayPath }}</code></div>
+      {% if listing.parentHref %}<a class="button-link button-link--secondary" href="{{ listing.parentHref }}">Subir un nivel</a>{% endif %}
+    </header>
+
+    {% if listing.relativePath %}
+      <form method="post" action="/projects/register" class="selection-panel">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        <input type="hidden" name="relativePath" value="{{ listing.relativePath }}">
+        <div><span class="field-hint">Carpeta seleccionada</span><strong>{{ listing.displayPath }}</strong></div>
+        <label>Descripción <span class="optional">opcional</span><textarea name="description" maxlength="2000" rows="3" placeholder="Añade contexto útil para ti y para los agentes"></textarea></label>
+        <button type="submit">Seleccionar esta carpeta</button>
+      </form>
+    {% endif %}
+
+    {% if listing.directories.length %}
+      <h2 class="directory-list-title">Subcarpetas</h2>
+      <ul class="directory-list" aria-label="Directorios">
+        {% for directory in listing.directories %}
+          <li><a href="{{ directory.href }}"><span class="folder-icon" aria-hidden="true"></span><span><strong>{{ directory.name }}</strong><small>{{ directory.displayPath }}</small></span></a></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty-state"><div><h2>No hay más carpetas</h2><p>{% if listing.relativePath %}Usa la acción superior para registrar esta carpeta o vuelve al nivel anterior.{% else %}No hay carpetas disponibles en esta raíz.{% endif %}</p></div></div>
+    {% endif %}
+
+  </section>
+{% endblock %}

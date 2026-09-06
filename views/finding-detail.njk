@@ -5,8 +5,8 @@
   {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
   <article class="case-file severity-border--{{ finding.severity }}">
     <header class="case-file__header">
-      <div><p class="eyebrow">Expediente {{ finding.id }}</p><h1>{{ finding.title }}</h1></div>
-      <div class="finding-row__meta"><span class="severity-tag severity--{{ finding.severity }}">{{ finding.severity }}</span><span class="status-tag" data-status="{{ finding.status }}">{{ finding.status }}</span></div>
+      <div><p class="section-label">Hallazgo · {{ finding.id }}</p><h1>{{ finding.title }}</h1></div>
+      <div class="finding-row__meta"><span class="severity-tag severity--{{ finding.severity }}">{{ severityLabels[finding.severity] }}</span><span class="status-tag" data-status="{{ finding.status }}">{{ statusLabels[finding.status] }}</span></div>
     </header>
     <dl class="case-meta">
       <div><dt>Origen</dt><dd>{{ finding.origin }}</dd></div>
@@ -14,14 +14,14 @@
       <div><dt>Commit</dt><dd>{{ finding.commitRef or 'No indicado' }}</dd></div>
       <div><dt>Actualizado</dt><dd><time datetime="{{ finding.updatedAt }}">{{ finding.updatedAt }}</time></dd></div>
     </dl>
-    <section class="case-section"><p class="eyebrow">Descripción</p><p class="preserve-lines">{{ finding.description }}</p></section>
-    <section class="case-section"><p class="eyebrow">Evidencia</p><p class="preserve-lines">{{ finding.evidence }}</p></section>
-    <section class="case-section"><p class="eyebrow">Recomendación</p><p class="preserve-lines">{{ finding.recommendation or 'Sin recomendación registrada.' }}</p></section>
+    <section class="case-section"><p class="section-label">Descripción</p><p class="preserve-lines">{{ finding.description }}</p></section>
+    <section class="case-section"><p class="section-label">Evidencia</p><p class="preserve-lines">{{ finding.evidence }}</p></section>
+    <section class="case-section"><p class="section-label">Recomendación</p><p class="preserve-lines">{{ finding.recommendation or 'Sin recomendación registrada.' }}</p></section>
   </article>
 
   <section class="action-grid" aria-label="Acciones del hallazgo">
     <details class="paper-panel">
-      <summary>Editar ficha</summary>
+      <summary>Editar hallazgo</summary>
       <form method="post" action="/projects/{{ project.id }}/findings/{{ finding.id }}/edit" class="finding-form finding-form--compact">
         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
         <label class="span-2">Título <input name="title" required maxlength="200" value="{{ finding.title }}"></label>
@@ -53,7 +53,7 @@
   </section>
 
   <section class="history" aria-labelledby="history-title">
-    <p class="eyebrow">Registro append-only</p><h2 id="history-title">Historial</h2>
-    <ol>{% for event in finding.history %}<li><time datetime="{{ event.createdAt }}">{{ event.createdAt }}</time><div><strong>{{ event.kind }}</strong>{% if event.fromStatus or event.toStatus %}<p>{{ event.fromStatus or 'inicio' }} → {{ event.toStatus }}</p>{% endif %}{% if event.note %}<p class="preserve-lines">{{ event.note }}</p>{% endif %}{% if event.changes %}<ul class="change-list">{% for field, change in event.changes %}<li><code>{{ field }}</code>: {{ change.from }} → {{ change.to }}</li>{% endfor %}</ul>{% endif %}</div></li>{% endfor %}</ol>
+    <p class="section-label">Registro de actividad</p><h2 id="history-title">Historial</h2>
+    <ol>{% for event in finding.history %}<li><time datetime="{{ event.createdAt }}">{{ event.createdAt }}</time><div><strong>{{ eventLabels[event.kind] }}</strong>{% if event.fromStatus or event.toStatus %}<p>{{ statusLabels[event.fromStatus] or 'Inicio' }} → {{ statusLabels[event.toStatus] }}</p>{% endif %}{% if event.note %}<p class="preserve-lines">{{ event.note }}</p>{% endif %}{% if event.changes %}<ul class="change-list">{% for field, change in event.changes %}<li><code>{{ field }}</code>: {{ change.from }} → {{ change.to }}</li>{% endfor %}</ul>{% endif %}</div></li>{% endfor %}</ol>
   </section>
 {% endblock %}

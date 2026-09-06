@@ -3,9 +3,11 @@
 {% block content %}
   <nav class="breadcrumbs" aria-label="Migas de pan"><a href="/">Proyectos</a><span aria-hidden="true">/</span><span>{{ project.name }}</span></nav>
   <section class="page-heading page-heading--compact">
-    <div><p class="eyebrow">Cuaderno de proyecto</p><h1>{{ project.name }}</h1><p class="lede">{{ project.description }}</p></div>
-    <a class="button-link" href="/projects/{{ project.id }}/findings/new">Anotar sospecha</a>
+    <div><h1>{{ project.name }}</h1><p class="lede">{{ project.description }}</p>{% if project.directoryPath %}<code class="repo-ref">{{ project.directoryPath }}</code>{% endif %}</div>
+    <a class="button-link" href="/projects/{{ project.id }}/findings/new">Registrar hallazgo</a>
   </section>
+
+  {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
 
   <form method="get" action="/projects/{{ project.id }}/findings" class="filter-bar" aria-label="Filtrar hallazgos">
     <label>Buscar <input type="search" name="query" maxlength="200" value="{{ filters.query or '' }}" placeholder="Título u origen"></label>
@@ -22,9 +24,8 @@
     <ol class="finding-list" aria-label="Hallazgos">
       {% for finding in findings %}
         <li class="finding-row severity-border--{{ finding.severity }}">
-          <div class="finding-row__index">{{ loop.index | string | truncate(2, true, '') }}</div>
           <div class="finding-row__body">
-            <div class="finding-row__meta"><span class="severity-tag severity--{{ finding.severity }}">{{ finding.severity }}</span><span class="status-tag">{{ finding.status }}</span></div>
+            <div class="finding-row__meta"><span class="severity-tag severity--{{ finding.severity }}">{{ severityLabels[finding.severity] }}</span><span class="status-tag">{{ statusLabels[finding.status] }}</span></div>
             <h2><a href="/projects/{{ project.id }}/findings/{{ finding.id }}">{{ finding.title }}</a></h2>
             <p>Origen: {{ finding.origin }}{% if finding.filePath %} · <code>{{ finding.filePath }}{% if finding.lineNumber %}:{{ finding.lineNumber }}{% endif %}</code>{% endif %}</p>
           </div>

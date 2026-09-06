@@ -71,6 +71,7 @@ describe('SecurityInboxService', () => {
       name: 'Zebra',
       description: 'Main app',
       repositoryReference: 'git@example.test:zebra.git',
+      directoryPath: null,
     });
     expect(zebra.createdAt).toBe(zebra.updatedAt);
 
@@ -101,6 +102,44 @@ describe('SecurityInboxService', () => {
     });
     expect(service.listProjects().find(({ id }) => id === alpha.id)?.openTotal).toBe(0);
   });
+
+  test('registers a project directory once and returns the stable project on retry', () => {
+    const first = service.registerProjectDirectory({
+      name: 'checkout',
+      description: 'Selected directory',
+      directoryPath: '/srv/projects/checkout',
+    });
+    const retry = service.registerProjectDirectory({
+      name: 'ignored-on-retry',
+      description: 'Ignored on retry',
+      directoryPath: '/srv/projects/checkout',
+    });
+
+    expect(first.created).toBe(true);
+    expect(first.project).toMatchObject({
+      name: 'checkout',
+      directoryPath: '/srv/projects/checkout',
+    });
+    expect(retry).toEqual({ project: first.project, created: false });
+    expect(service.listProjects()).toHaveLength(1);
+  });
+
+  test('serializes the same directory path across two database connections', async () => {
+    const input = JSON.stringify({
+      name: 'shared',
+      description: 'Concurrent project',
+      directoryPath: '/srv/projects/shared',
+    });
+    const worker = join(process.cwd(), 'test/core/register-project-worker.ts');
+    const run = () => execFileAsync(process.execPath, ['--import', 'tsx', worker, databasePath, input]);
+
+    const results = (await Promise.all([run(), run()]))
+      .map(({ stdout }) => JSON.parse(stdout) as { created: boolean; id: string });
+
+    expect(results.map(({ created }) => created).sort()).toEqual([false, true]);
+    expect(new Set(results.map(({ id }) => id)).size).toBe(1);
+    expect(service.listProjects()).toHaveLength(1);
+  }, 15_000);
 
   test('registers all fields, isolates projects, filters, searches and returns detail history', () => {
     const project = service.createProject({ name: 'One', description: 'First' });

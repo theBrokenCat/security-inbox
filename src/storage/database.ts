@@ -5,7 +5,7 @@ import BetterSqlite3 from 'better-sqlite3';
 
 export type SqliteDatabase = InstanceType<typeof BetterSqlite3>;
 
-const currentSchemaVersion = 1;
+const currentSchemaVersion = 2;
 const uuidIdCheck = `
   length(id) = 36
   AND id GLOB '????????-????-????-????-????????????'
@@ -99,14 +99,31 @@ const migrationV1 = `
     END;
 `;
 
+const migrationV2 = `
+  ALTER TABLE projects ADD COLUMN directory_path TEXT CHECK (
+    directory_path IS NULL OR length(trim(directory_path)) BETWEEN 1 AND 4096
+  );
+  CREATE UNIQUE INDEX idx_projects_directory_path
+    ON projects(directory_path) WHERE directory_path IS NOT NULL;
+`;
+
+const walRetryDelays = [10, 25, 50, 100, 200];
+const walWaitSignal = new Int32Array(new SharedArrayBuffer(4));
+
 function enableWriteAheadLogging(database: SqliteDatabase): void {
-  if (database.pragma('journal_mode', { simple: true }) === 'wal') return;
-  try {
-    database.pragma('journal_mode = WAL');
-  } catch (error) {
-    if (!(error instanceof BetterSqlite3.SqliteError) || error.code !== 'SQLITE_BUSY') throw error;
-    if (database.pragma('journal_mode', { simple: true }) === 'wal') return;
-    database.pragma('journal_mode = WAL');
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      if (database.pragma('journal_mode', { simple: true }) === 'wal') return;
+      database.pragma('journal_mode = WAL');
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof BetterSqlite3.SqliteError)
+        || error.code !== 'SQLITE_BUSY'
+        || attempt >= walRetryDelays.length
+      ) throw error;
+      Atomics.wait(walWaitSignal, 0, 0, walRetryDelays[attempt]);
+    }
   }
 }
 
@@ -124,25 +141,31 @@ export function openDatabase(databasePath?: string): SqliteDatabase {
     if (version > currentSchemaVersion) {
       throw new Error(`Unsupported database schema version ${version}; expected at most ${currentSchemaVersion}`);
     }
-    if (version === 0) {
+    enableWriteAheadLogging(database);
+    if (version < currentSchemaVersion) {
       database.transaction(() => {
-        const currentVersion = database.pragma('user_version', { simple: true }) as number;
-        if (currentVersion === currentSchemaVersion) return;
-        if (currentVersion !== 0) {
-          throw new Error(`Unsupported database schema version ${currentVersion}; expected at most ${currentSchemaVersion}`);
+        let currentVersion = database.pragma('user_version', { simple: true }) as number;
+        if (currentVersion === 0) {
+          const applicationTable = database.prepare(`
+            SELECT name FROM sqlite_schema
+            WHERE type = 'table' AND name IN ('projects', 'findings', 'finding_events')
+            LIMIT 1
+          `).get();
+          if (applicationTable) throw new Error('Unversioned or incompatible application schema');
+          database.exec(migrationV1);
+          database.pragma('user_version = 1');
+          currentVersion = 1;
         }
-        const applicationTable = database.prepare(`
-          SELECT name FROM sqlite_schema
-          WHERE type = 'table' AND name IN ('projects', 'findings', 'finding_events')
-          LIMIT 1
-        `).get();
-        if (applicationTable) throw new Error('Unversioned or incompatible application schema');
-
-        database.exec(migrationV1);
-        database.pragma(`user_version = ${currentSchemaVersion}`);
+        if (currentVersion === 1) {
+          database.exec(migrationV2);
+          database.pragma('user_version = 2');
+          currentVersion = 2;
+        }
+        if (currentVersion !== currentSchemaVersion) {
+          throw new Error(`Unsupported database schema version ${currentVersion}; expected ${currentSchemaVersion}`);
+        }
       }).immediate();
     }
-    enableWriteAheadLogging(database);
     return database;
   } catch (error) {
     database.close();

@@ -37,6 +37,13 @@ test('Compose uses its project bridge with loopback-only web and stdio MCP', () 
   expect(mcp).toContain('command: ["node", "dist/src/mcp/server.js"]');
   expect(mcp).not.toContain('npm run mcp');
   expect(compose).toContain('source: ./data');
+  expect(compose).toContain('SECURITY_INBOX_PROJECTS_ROOT: /projects');
+  expect(compose).toContain(
+    'SECURITY_INBOX_PROJECTS_DISPLAY_ROOT: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}',
+  );
+  expect(compose).toContain('source: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}');
+  expect(compose).toContain('target: /projects');
+  expect(compose).toContain('read_only: true');
   expect(web.match(/^\s+- "[^\"]+"$/gm)).toEqual(['      - "127.0.0.1:3300:3300"']);
   expect(mcp).not.toMatch(/\n\s+ports:/);
   expect(compose).not.toContain('internal: true');

@@ -6,10 +6,16 @@ x-app: &app
   environment:
     SECURITY_INBOX_DB: /app/data/security-inbox.sqlite
     SECURITY_INBOX_CONTAINER: "true"
+    SECURITY_INBOX_PROJECTS_ROOT: /projects
+    SECURITY_INBOX_PROJECTS_DISPLAY_ROOT: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}
   volumes:
     - type: bind
       source: ./data
       target: /app/data
+    - type: bind
+      source: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}
+      target: /projects
+      read_only: true
   init: true
 
 services:

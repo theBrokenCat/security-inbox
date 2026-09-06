@@ -12,6 +12,8 @@
 
 - El servicio compartido está en `src/core` y persiste en SQLite mediante
   `src/storage`; web y MCP son adaptadores separados.
+- `src/projects/directory-manager.ts` es la única frontera de exploración del
+  filesystem; web y MCP deben usarla y nunca resolver rutas por su cuenta.
 - `src/demo` contiene únicamente fixtures sintéticos y el recorrido local del
   servicio. La base por defecto es `data/security-inbox.sqlite`.
 - La imagen incluye `views` y `public` para que web y sus pruebas funcionen;
@@ -21,9 +23,14 @@
   `SECURITY_INBOX_CONTAINER=true`, la web escucha dentro en `0.0.0.0:3300`.
 - En Linux, `./data` y sus archivos deben ser escribibles por UID/GID 1000; usa
   `chown -R 1000:1000 data` si un SQLite heredado pertenece a root.
+- `SECURITY_INBOX_PROJECTS_ROOT` limita el árbol accesible;
+  `SECURITY_INBOX_PROJECTS_DISPLAY_ROOT` es la ruta persistida/visible. Compose
+  monta `${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}` read-only.
 
 ## Límites
 
 - No guardar secretos, credenciales ni tokens reales en código, fixtures,
   documentación, imagen o Compose.
 - No leer ni modificar Penthos desde este proyecto.
+- Los agentes identifican proyectos por `directoryPath` y `projectId`; nunca por
+  nombre solamente. No se implementa borrado en esta iteración.

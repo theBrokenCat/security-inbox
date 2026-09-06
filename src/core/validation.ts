@@ -15,6 +15,21 @@ export const createProjectInputSchema = z.object({
   repositoryReference: optionalText(500),
 }).strict();
 
+export const resolvedProjectDirectoryInputSchema = z.object({
+  name: requiredText(120),
+  description: requiredText(2_000),
+  directoryPath: requiredText(4_096),
+}).strict();
+
+export const browseProjectDirectoriesInputSchema = z.object({
+  relativePath: z.string().trim().max(4_096).optional(),
+}).strict();
+
+export const registerProjectDirectoryInputSchema = z.object({
+  relativePath: z.string().trim().max(4_096),
+  description: optionalText(2_000),
+}).strict();
+
 export const registerFindingInputSchema = z.object({
   projectId: uuid,
   idempotencyKey: requiredText(200),

@@ -2,11 +2,11 @@
 {% block title %}Nueva sospecha · {{ project.name }}{% endblock %}
 {% block content %}
   <nav class="breadcrumbs" aria-label="Migas de pan"><a href="/">Proyectos</a><span>/</span><a href="/projects/{{ project.id }}/findings">{{ project.name }}</a><span>/</span><span>Nueva sospecha</span></nav>
-  <section class="page-heading page-heading--compact"><div><p class="eyebrow">Entrada manual</p><h1>Anotar sospecha</h1><p class="lede">Describe lo observado. El registro nace sin revisar y no confirma una vulnerabilidad.</p></div><span class="folio">{{ project.name }}</span></section>
+  <section class="page-heading page-heading--compact"><div><h1>Registrar hallazgo</h1><p class="lede">Describe lo observado. El registro nace sin revisar y no confirma una vulnerabilidad.</p></div></section>
 
   {% if duplicates !== null %}
     <aside class="duplicate-box" aria-live="polite">
-      <p class="eyebrow">Precheck terminado</p>
+      <p class="section-label">Comprobación de duplicados</p>
       {% if duplicates.length %}
         <h2>{{ duplicates.length }} posible{% if duplicates.length != 1 %}s{% endif %} parecido{% if duplicates.length != 1 %}s{% endif %}</h2>
         <ul>{% for duplicate in duplicates %}<li><a href="/projects/{{ project.id }}/findings/{{ duplicate.id }}">{{ duplicate.title }}</a> — {% if duplicate.match == 'exact' %}Coincidencia exacta{% else %}Coincidencia similar{% endif %}</li>{% endfor %}</ul>

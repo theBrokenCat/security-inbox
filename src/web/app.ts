@@ -7,10 +7,18 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import nunjucks from 'nunjucks';
 
 import { AppError, type SecurityInboxService } from '../core/service.js';
-import { FINDING_STATUSES, SEVERITIES, type FindingDetail, type ProjectSummary } from '../core/types.js';
+import {
+  FINDING_STATUSES,
+  SEVERITIES,
+  type DirectoryListing,
+  type FindingDetail,
+  type ProjectSummary,
+} from '../core/types.js';
+import type { ProjectDirectoryManager } from '../projects/directory-manager.js';
 
 export type WebAppOptions = {
   service: SecurityInboxService;
+  directories: ProjectDirectoryManager;
   port?: number;
 };
 
@@ -18,6 +26,7 @@ type FormBody = Record<string, unknown>;
 type ProjectParams = { projectId: string };
 type FindingParams = ProjectParams & { findingId: string };
 type FindingQuery = { severity?: string; status?: string; query?: string; created?: string; updated?: string };
+type DirectoryQuery = { path?: string };
 
 const severityOptions = [
   { value: 'critical', label: 'Crítica' },
@@ -34,6 +43,14 @@ const statusOptions = [
   { value: 'resolved', label: 'Resuelto' },
   { value: 'dismissed', label: 'Descartado' },
 ] as const;
+const severityLabels = Object.fromEntries(severityOptions.map(({ value, label }) => [value, label]));
+const statusLabels = Object.fromEntries(statusOptions.map(({ value, label }) => [value, label]));
+const eventLabels = {
+  created: 'Creado',
+  edited: 'Editado',
+  status_changed: 'Estado actualizado',
+  note: 'Nota añadida',
+};
 
 const publicErrors: Record<AppError['code'], { status: number; title: string; message: string }> = {
   VALIDATION_ERROR: {
@@ -65,6 +82,16 @@ const publicErrors: Record<AppError['code'], { status: number; title: string; me
     status: 409,
     title: 'Sin cambio de estado',
     message: 'El hallazgo ya tiene ese estado.',
+  },
+  DIRECTORY_INVALID: {
+    status: 400,
+    title: 'Directorio no válido',
+    message: 'Selecciona una carpeta dentro de la raíz permitida.',
+  },
+  DIRECTORY_UNAVAILABLE: {
+    status: 404,
+    title: 'Directorio no disponible',
+    message: 'No podemos acceder a esa carpeta.',
   },
 };
 
@@ -110,11 +137,29 @@ function renderFinding(reply: FastifyReply, render: (name: string, context?: obj
   return reply.type('text/html; charset=utf-8').send(render('finding-detail.njk', data));
 }
 
+function directoryView(listing: DirectoryListing) {
+  const segments = listing.relativePath.split('/').filter(Boolean);
+  return {
+    ...listing,
+    parentHref: listing.parentRelativePath === null
+      ? null
+      : `/projects/new?path=${encodeURIComponent(listing.parentRelativePath)}`,
+    breadcrumbs: segments.map((name, index) => ({
+      name,
+      href: `/projects/new?path=${encodeURIComponent(segments.slice(0, index + 1).join('/'))}`,
+    })),
+    directories: listing.directories.map((directory) => ({
+      ...directory,
+      href: `/projects/new?path=${encodeURIComponent(directory.relativePath)}`,
+    })),
+  };
+}
+
 export function resolveListenHost(environment: NodeJS.ProcessEnv): '127.0.0.1' | '0.0.0.0' {
   return environment.SECURITY_INBOX_CONTAINER === 'true' ? '0.0.0.0' : '127.0.0.1';
 }
 
-export function buildWebApp({ service, port = 3300 }: WebAppOptions): FastifyInstance {
+export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions): FastifyInstance {
   const app = Fastify();
   const csrfToken = randomBytes(32).toString('hex');
   const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
@@ -128,6 +173,9 @@ export function buildWebApp({ service, port = 3300 }: WebAppOptions): FastifyIns
     csrfToken,
     severityOptions,
     statusOptions,
+    severityLabels,
+    statusLabels,
+    eventLabels,
   });
 
   app.register(formbody);
@@ -149,9 +197,12 @@ export function buildWebApp({ service, port = 3300 }: WebAppOptions): FastifyIns
   app.addHook('preHandler', async (request, reply) => {
     if (request.method !== 'POST') return;
     const host = request.headers.host!;
+    const fetchSite = request.headers['sec-fetch-site'];
+    const hasTrustedOrigin = request.headers.origin === `http://${host}`;
+    const hasOpaqueSameOrigin = request.headers.origin === 'null' && fetchSite === 'same-origin';
     if (
-      request.headers.origin !== `http://${host}`
-      || request.headers['sec-fetch-site'] === 'cross-site'
+      (!hasTrustedOrigin && !hasOpaqueSameOrigin)
+      || fetchSite === 'cross-site'
     ) {
       return reply.code(403).type('text/html; charset=utf-8').send(render('error.njk', {
         title: 'Solicitud rechazada',
@@ -180,13 +231,22 @@ export function buildWebApp({ service, port = 3300 }: WebAppOptions): FastifyIns
     projects: service.listProjects(),
   })));
 
-  app.post<{ Body: FormBody }>('/projects', async (request, reply) => {
-    service.createProject({
-      name: text(request.body, 'name'),
-      description: text(request.body, 'description'),
-      repositoryReference: optionalText(request.body, 'repositoryReference'),
+  app.get<{ Querystring: DirectoryQuery }>('/projects/new', async (request, reply) => {
+    const listing = directories.browse(queryText(request.query.path));
+    return reply.type('text/html; charset=utf-8').send(render('project-new.njk', {
+      listing: directoryView(listing),
+    }));
+  });
+
+  app.post<{ Body: FormBody }>('/projects/register', async (request, reply) => {
+    const result = directories.register({
+      relativePath: text(request.body, 'relativePath'),
+      description: optionalText(request.body, 'description'),
     });
-    return reply.redirect('/', 303);
+    return reply.redirect(
+      `/projects/${result.project.id}/findings?created=${result.created ? '1' : '0'}`,
+      303,
+    );
   });
 
   app.get<{ Params: ProjectParams; Querystring: FindingQuery }>(
@@ -201,10 +261,16 @@ export function buildWebApp({ service, port = 3300 }: WebAppOptions): FastifyIns
         ...(status ? { status: status as (typeof FINDING_STATUSES)[number] } : {}),
         ...(query ? { query } : {}),
       });
+      const created = queryText(request.query.created);
       return reply.type('text/html; charset=utf-8').send(render('findings.njk', {
         project: projectFor(service, request.params.projectId),
         findings,
         filters: { severity, status, query },
+        notice: created === '1'
+          ? 'Proyecto registrado desde el directorio seleccionado.'
+          : created === '0'
+            ? 'Ese directorio ya estaba registrado; se muestra el proyecto existente.'
+            : undefined,
       }));
     },
   );
