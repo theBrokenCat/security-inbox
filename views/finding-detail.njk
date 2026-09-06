@@ -12,48 +12,51 @@
       <div><dt>Origen</dt><dd>{{ finding.origin }}</dd></div>
       <div><dt>Ubicación</dt><dd>{% if finding.filePath %}<code>{{ finding.filePath }}{% if finding.lineNumber %}:{{ finding.lineNumber }}{% endif %}</code>{% else %}No indicada{% endif %}</dd></div>
       <div><dt>Commit</dt><dd>{{ finding.commitRef or 'No indicado' }}</dd></div>
-      <div><dt>Actualizado</dt><dd><time datetime="{{ finding.updatedAt }}">{{ finding.updatedAt }}</time></dd></div>
+      <div><dt>Actualizado</dt><dd><time datetime="{{ finding.updatedAt }}">{{ finding.updatedAt | friendlyDate }}</time></dd></div>
     </dl>
     <section class="case-section"><p class="section-label">Descripción</p><p class="preserve-lines">{{ finding.description }}</p></section>
     <section class="case-section"><p class="section-label">Evidencia</p><p class="preserve-lines">{{ finding.evidence }}</p></section>
     <section class="case-section"><p class="section-label">Recomendación</p><p class="preserve-lines">{{ finding.recommendation or 'Sin recomendación registrada.' }}</p></section>
   </article>
 
-  <section class="action-grid" aria-label="Acciones del hallazgo">
-    <details class="paper-panel">
-      <summary>Editar hallazgo</summary>
-      <form method="post" action="/projects/{{ project.id }}/findings/{{ finding.id }}/edit" class="finding-form finding-form--compact">
-        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
-        <label class="span-2">Título <input name="title" required maxlength="200" value="{{ finding.title }}"></label>
-        <label>Gravedad <select name="severity">{% for option in severityOptions %}<option value="{{ option.value }}"{% if finding.severity == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></label>
-        <label>Origen <input name="origin" required maxlength="200" value="{{ finding.origin }}"></label>
-        <label class="span-2">Descripción <textarea name="description" required maxlength="10000" rows="5">{{ finding.description }}</textarea></label>
-        <label>Archivo <input name="filePath" maxlength="1000" value="{{ finding.filePath or '' }}"></label>
-        <label>Línea <input name="lineNumber" type="number" min="1" max="10000000" value="{{ finding.lineNumber or '' }}"></label>
-        <label class="span-2">Commit <input name="commitRef" maxlength="200" value="{{ finding.commitRef or '' }}"></label>
-        <label class="span-2">Evidencia <textarea name="evidence" required maxlength="10000" rows="5">{{ finding.evidence }}</textarea></label>
-        <label class="span-2">Recomendación <textarea name="recommendation" maxlength="5000" rows="3">{{ finding.recommendation or '' }}</textarea></label>
-        <label class="span-2">Nota de edición <span class="optional">opcional</span><textarea name="note" maxlength="5000" rows="2"></textarea></label>
-        <button type="submit" class="span-2">Guardar cambios</button>
-      </form>
-    </details>
-    <div class="paper-panel action-stack">
-      <form method="post" action="/projects/{{ project.id }}/findings/{{ finding.id }}/status" class="form-grid">
-        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
-        <label>Nuevo estado <select name="status">{% for option in statusOptions %}<option value="{{ option.value }}"{% if finding.status == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></label>
-        <label>Nota <span class="optional">obligatoria al resolver o descartar</span><textarea name="note" maxlength="5000" rows="3"></textarea></label>
-        <button type="submit">Cambiar estado</button>
-      </form>
-      <form method="post" action="/projects/{{ project.id }}/findings/{{ finding.id }}/notes" class="form-grid note-form">
-        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
-        <label>Añadir nota <textarea name="note" required maxlength="5000" rows="3"></textarea></label>
-        <button type="submit" class="button--ink">Guardar nota</button>
-      </form>
+  <section class="action-section" aria-labelledby="actions-title">
+    <p class="section-label">Gestión</p><h2 id="actions-title">Acciones</h2>
+    <div class="action-grid">
+      <details class="paper-panel">
+        <summary>Editar hallazgo</summary>
+        <form method="post" action="/projects/{{ project.id }}/findings/{{ finding.id }}/edit" class="finding-form finding-form--compact">
+          <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+          <label class="span-2">Título <input name="title" required maxlength="200" value="{{ finding.title }}"></label>
+          <label>Gravedad <select name="severity">{% for option in severityOptions %}<option value="{{ option.value }}"{% if finding.severity == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></label>
+          <label>Origen <input name="origin" required maxlength="200" value="{{ finding.origin }}"></label>
+          <label class="span-2">Descripción <textarea name="description" required maxlength="10000" rows="5">{{ finding.description }}</textarea></label>
+          <label>Archivo <input name="filePath" maxlength="1000" value="{{ finding.filePath or '' }}"></label>
+          <label>Línea <input name="lineNumber" type="number" min="1" max="10000000" value="{{ finding.lineNumber or '' }}"></label>
+          <label class="span-2">Commit <input name="commitRef" maxlength="200" value="{{ finding.commitRef or '' }}"></label>
+          <label class="span-2">Evidencia <textarea name="evidence" required maxlength="10000" rows="5">{{ finding.evidence }}</textarea></label>
+          <label class="span-2">Recomendación <textarea name="recommendation" maxlength="5000" rows="3">{{ finding.recommendation or '' }}</textarea></label>
+          <label class="span-2">Nota de edición <span class="optional">opcional</span><textarea name="note" maxlength="5000" rows="2"></textarea></label>
+          <button type="submit" class="span-2">Guardar cambios</button>
+        </form>
+      </details>
+      <div class="paper-panel action-stack">
+        <form method="post" action="/projects/{{ project.id }}/findings/{{ finding.id }}/status" class="form-grid">
+          <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+          <label>Nuevo estado <select name="status">{% for option in statusOptions %}<option value="{{ option.value }}"{% if finding.status == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></label>
+          <label>Nota <span class="optional">obligatoria al resolver o descartar</span><textarea name="note" maxlength="5000" rows="3"></textarea></label>
+          <button type="submit">Cambiar estado</button>
+        </form>
+        <form method="post" action="/projects/{{ project.id }}/findings/{{ finding.id }}/notes" class="form-grid note-form">
+          <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+          <label>Añadir nota <textarea name="note" required maxlength="5000" rows="3"></textarea></label>
+          <button type="submit" class="button--ink">Guardar nota</button>
+        </form>
+      </div>
     </div>
   </section>
 
   <section class="history" aria-labelledby="history-title">
     <p class="section-label">Registro de actividad</p><h2 id="history-title">Historial</h2>
-    <ol>{% for event in finding.history %}<li><time datetime="{{ event.createdAt }}">{{ event.createdAt }}</time><div><strong>{{ eventLabels[event.kind] }}</strong>{% if event.fromStatus or event.toStatus %}<p>{{ statusLabels[event.fromStatus] or 'Inicio' }} → {{ statusLabels[event.toStatus] }}</p>{% endif %}{% if event.note %}<p class="preserve-lines">{{ event.note }}</p>{% endif %}{% if event.changes %}<ul class="change-list">{% for field, change in event.changes %}<li><code>{{ field }}</code>: {{ change.from }} → {{ change.to }}</li>{% endfor %}</ul>{% endif %}</div></li>{% endfor %}</ol>
+    <ol>{% for event in finding.history %}<li><time datetime="{{ event.createdAt }}">{{ event.createdAt | friendlyDate }}</time><div><strong>{{ eventLabels[event.kind] }}</strong>{% if event.fromStatus or event.toStatus %}<p>{{ statusLabels[event.fromStatus] or 'Inicio' }} → {{ statusLabels[event.toStatus] }}</p>{% endif %}{% if event.note %}<p class="preserve-lines">{{ event.note }}</p>{% endif %}{% if event.changes %}<ul class="change-list">{% for field, change in event.changes %}<li><code>{{ field }}</code>: {{ change.from }} → {{ change.to }}</li>{% endfor %}</ul>{% endif %}</div></li>{% endfor %}</ol>
   </section>
 {% endblock %}

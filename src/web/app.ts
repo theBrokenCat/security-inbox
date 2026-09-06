@@ -159,6 +159,14 @@ export function resolveListenHost(environment: NodeJS.ProcessEnv): '127.0.0.1' |
   return environment.SECURITY_INBOX_CONTAINER === 'true' ? '0.0.0.0' : '127.0.0.1';
 }
 
+const friendlyDateFormatter = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+
+function friendlyDate(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : friendlyDateFormatter.format(date);
+}
+
 export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions): FastifyInstance {
   const app = Fastify();
   const csrfToken = randomBytes(32).toString('hex');
@@ -167,6 +175,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     new nunjucks.FileSystemLoader(join(process.cwd(), 'views'), { noCache: true }),
     { autoescape: true, throwOnUndefined: false },
   );
+  templates.addFilter('friendlyDate', friendlyDate);
   const stylesheet = readFileSync(join(process.cwd(), 'public/styles.css'), 'utf8');
   const render = (name: string, context: object = {}) => templates.render(name, {
     ...context,
