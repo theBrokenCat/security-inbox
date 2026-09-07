@@ -106,6 +106,7 @@ test('advertises useful output schemas for every tool', async () => {
     expect(JSON.stringify(tool.outputSchema)).toContain('VALIDATION_ERROR');
   }
   expect(JSON.stringify(tools.find(({ name }) => name === 'list_projects')?.outputSchema)).toContain('openCounts');
+  expect(JSON.stringify(tools.find(({ name }) => name === 'list_projects')?.outputSchema)).toContain('lastActivityAt');
   expect(JSON.stringify(tools.find(({ name }) => name === 'browse_project_directories')?.outputSchema))
     .toContain('rootDisplayPath');
   expect(JSON.stringify(tools.find(({ name }) => name === 'register_project')?.outputSchema))

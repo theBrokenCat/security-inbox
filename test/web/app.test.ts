@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { SecurityInboxService } from '../../src/core/service.js';
 import type { RegisterFindingInput } from '../../src/core/types.js';
@@ -182,8 +182,6 @@ describe('Security Inbox web adapter', () => {
     });
 
     const page = await get('/');
-    // A project with an open critical is presented as an urgent row rather than a card, but
-    // the counting hooks are the same in both presentations.
     const counts = Object.fromEntries(
       [...page.body.matchAll(/data-count-severity="(\w+)" data-count="(\d+)"/g)]
         .map(([, severity, count]) => [severity, Number(count)]),
@@ -193,7 +191,33 @@ describe('Security Inbox web adapter', () => {
     expect(counts.low).toBeUndefined();
     expect(page.body).toContain('data-pending-review-count="1"');
     expect(page.body).toContain('data-open-total="3"');
-    expect(page.body).toContain('Requiere atención ahora');
+    expect(page.body).toContain('project-card--critical');
+    expect(page.body).not.toContain('Requiere atención ahora');
+    expect(page.body).not.toContain('Resto de proyectos');
+  });
+
+  test('renders critical and high projects as cards in one activity-ordered grid', async () => {
+    vi.useFakeTimers();
+    try {
+      const ownerId = testOwnerId(service);
+      vi.setSystemTime('2026-09-07T08:00:00.000Z');
+      const critical = service.createProject({ name: 'Critical older', description: 'x', ownerId });
+      service.registerFinding(registration(critical.id, 'critical-card', { severity: 'critical' }));
+
+      vi.setSystemTime('2026-09-07T09:00:00.000Z');
+      const high = service.createProject({ name: 'High newer', description: 'x', ownerId });
+      service.registerFinding(registration(high.id, 'high-card', { severity: 'high' }));
+
+      const page = await get('/');
+      expect(page.body.match(/<article class="project-card/g)).toHaveLength(2);
+      expect(page.body).toContain('project-card--critical');
+      expect(page.body).toContain('project-card--high');
+      expect(page.body).not.toContain('class="urgent');
+      expect(page.body.indexOf('High newer')).toBeLessThan(page.body.indexOf('Critical older'));
+      expect(page.body).toContain(`datetime="${service.listProjects()[0]!.lastActivityAt}"`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('lists an empty project and filters findings by severity, status, and query', async () => {
@@ -468,6 +492,14 @@ describe('Security Inbox web adapter', () => {
     expect(css.body).toContain('"Avenir Next"');
     expect(css.body).toContain('outline: 3px solid var(--focus)');
     expect(css.body).toContain('--medium: #7a5300');
+    expect(css.body).toContain('--project-critical: #111111');
+    expect(css.body).toContain('--project-high: #d81f32');
+    expect(css.body).toContain('.project-card--critical { --card-severity: var(--project-critical); }');
+    expect(css.body).toContain('.project-card--high { --card-severity: var(--project-high); }');
+    expect(css.body).toContain('border-left-color: var(--card-severity, var(--input-border))');
+    expect(css.body).toMatch(/@media \(prefers-color-scheme: dark\)[\s\S]*\.project-card--critical\s*\{[^}]*box-shadow:\s*inset 1px 0 var\(--input-border\), var\(--shadow\)/);
+    expect(css.body).toMatch(/\.project-card--critical:hover\s*\{[^}]*box-shadow:\s*inset 1px 0 var\(--input-border\), 0 6px 20px/);
+    expect(css.body).not.toContain('.urgent__');
     // The severity scale stays reserved for severity: user accents are separate tokens.
     expect(css.body).toContain('--violeta: #7b45d6');
     expect(css.body).toMatch(/@media \(prefers-color-scheme: dark\)/);
@@ -610,8 +642,6 @@ describe('Security Inbox request guards on the user routes', () => {
       description: 'Three severities, one finding each',
       ownerId: testOwnerId(service),
     });
-    // Deliberately below the urgent threshold: the proportional bar belongs to the card
-    // presentation, and a critical or high project is shown as an urgent row instead.
     for (const severity of ['medium', 'low', 'informational'] as const) {
       service.registerFinding(registration(project.id, `bar-${severity}`, { severity }));
     }
