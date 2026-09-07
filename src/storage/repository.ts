@@ -40,6 +40,7 @@ type ProjectSummaryRow = ProjectRow & {
   owner_name: string;
   owner_color: UserColor;
   owner_created_at: string;
+  last_activity_at: string;
   critical_count: number;
   high_count: number;
   medium_count: number;
@@ -197,21 +198,17 @@ export class SecurityInboxRepository {
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'low' THEN 1 ELSE 0 END) AS low_count,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'informational' THEN 1 ELSE 0 END) AS informational_count,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') THEN 1 ELSE 0 END) AS open_total,
-        SUM(CASE WHEN f.status = 'pending_review' THEN 1 ELSE 0 END) AS pending_review_count
+        SUM(CASE WHEN f.status = 'pending_review' THEN 1 ELSE 0 END) AS pending_review_count,
+        MAX(p.updated_at, COALESCE(MAX(f.updated_at), p.updated_at)) AS last_activity_at
       FROM projects p
       JOIN users u ON u.id = p.owner_id
       LEFT JOIN findings f ON f.project_id = p.id
       WHERE @ownerId IS NULL OR p.owner_id = @ownerId
       GROUP BY p.id
-      ORDER BY p.name COLLATE NOCASE, p.id
+      ORDER BY last_activity_at DESC, p.name COLLATE NOCASE, p.id
     `).all({ ownerId }) as ProjectSummaryRow[];
 
-    const severityRank = (severity: Severity | null) => (
-      severity === null ? SEVERITIES.length : SEVERITIES.indexOf(severity)
-    );
-
-    // Worst open severity leads the list: what can hurt most is read first. The SQL order by
-    // name survives as the final tiebreaker, so the list stays stable between reloads.
+    // Project and finding writes share one activity order. Name and UUID make ties stable.
     return rows.map((row) => {
       const openCounts: SeverityCounts = {
         critical: row.critical_count,
@@ -229,23 +226,12 @@ export class SecurityInboxRepository {
           color: row.owner_color,
           created_at: row.owner_created_at,
         }),
+        lastActivityAt: row.last_activity_at,
         openCounts,
         openTotal: row.open_total,
         pendingReviewCount: row.pending_review_count,
         worstOpenSeverity: worstOpenSeverity(openCounts),
       };
-    }).sort((left, right) => {
-      const byWorst = severityRank(left.worstOpenSeverity) - severityRank(right.worstOpenSeverity);
-      if (byWorst !== 0) return byWorst;
-      // Same worst severity: more of it first, then more unreviewed, then more open findings.
-      // Array.prototype.sort is stable, so the SQL order by name breaks any remaining tie.
-      const worst = left.worstOpenSeverity;
-      if (worst !== null) {
-        const byCount = right.openCounts[worst] - left.openCounts[worst];
-        if (byCount !== 0) return byCount;
-      }
-      return right.pendingReviewCount - left.pendingReviewCount
-        || right.openTotal - left.openTotal;
     });
   }
 

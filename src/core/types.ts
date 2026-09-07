@@ -48,6 +48,7 @@ export type Project = {
 export type SeverityCounts = Record<Severity, number>;
 export type ProjectSummary = Project & {
   owner: User;
+  lastActivityAt: string;
   openCounts: SeverityCounts;
   openTotal: number;
   pendingReviewCount: number;

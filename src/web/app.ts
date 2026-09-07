@@ -205,14 +205,6 @@ function projectView(project: ProjectSummary) {
   return { ...project, bar: severityBar(project) };
 }
 
-// Critical and high work does not belong in the same grid as everything else: it gets its own
-// list at the top, read as a queue rather than as cards to browse.
-const urgentSeverities = new Set(['critical', 'high']);
-
-function isUrgent(project: ProjectSummary): boolean {
-  return project.worstOpenSeverity !== null && urgentSeverities.has(project.worstOpenSeverity);
-}
-
 function projectTotals(projects: ProjectSummary[]) {
   return projects.reduce((totals, project) => ({
     critical: totals.critical + project.openCounts.critical,
@@ -365,8 +357,6 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
       : service.listProjects({ scope: 'mine', ownerId: user.id });
     return reply.type('text/html; charset=utf-8').send(renderFor(request, 'projects.njk', {
       projects: projects.map(projectView),
-      urgent: projects.filter(isUrgent).map(projectView),
-      rest: projects.filter((project) => !isUrgent(project)).map(projectView),
       totals: projectTotals(projects),
       scope,
       allProjectCount: scope === 'all' ? projects.length : service.listProjects({ scope: 'all' }).length,

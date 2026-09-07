@@ -50,5 +50,6 @@
 - El único borrado del proyecto es el de un usuario sin proyectos. `owner_id` es
   `NOT NULL`, así que traspasar es requisito previo, nunca una consecuencia
   automática.
-- La portada separa lo crítico y alto en una cola propia; el orden de
-  `listProjects` lo decide la peor gravedad abierta, no el nombre.
+- La portada usa una sola cuadrícula de tarjetas. `listProjects` ordena por la
+  actividad más reciente del proyecto o de cualquiera de sus hallazgos; nombre
+  y UUID solo desempatan. En las tarjetas, crítica usa negro y alta rojo.

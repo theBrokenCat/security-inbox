@@ -67,3 +67,17 @@ Revisión final: pass, con 0 Blocking y 0 Important; quedan dos observaciones Mi
 - [x] Dejar cambios staged, sin commit ni push.
 
 Revisión iteración 2: pass, con 0 Blocking y 0 Important.
+
+---
+
+## Iteración 3 — Cuadrícula única por actividad
+
+### Fase 9 — Modelo y presentación
+
+- [x] Calcular `lastActivityAt` y ordenar todos los proyectos por actividad reciente.
+- [x] Exponer el mismo dato y orden a la web y al MCP.
+- [x] Sustituir la cola urgente por una sola cuadrícula de tarjetas.
+- [x] Mostrar crítica en negro, alta en rojo y gravedad también mediante texto.
+- [x] Actualizar documentación e instrucciones duraderas.
+- [x] Ejecutar suite, typecheck, build y QA visual sobre datos aislados.
+- [x] Dejar cambios staged, sin commit ni push.

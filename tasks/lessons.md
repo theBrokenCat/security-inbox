@@ -81,3 +81,18 @@
 - **Aplica en**: frontend, css, diseño, accesibilidad
 - **Promocionar**: no — depende de que esta app use el color como señal.
 
+## L004 — Un inventario conserva una sola geometría · 2026-09-07
+- **Contexto**: portada de proyectos con una cola lineal para crítico/alto y una
+  cuadrícula distinta para el resto.
+- **Síntoma**: el usuario no podía recorrer los proyectos como un solo inventario;
+  la gravedad cambiaba tanto el formato como el orden.
+- **Causa**: se convirtió la prioridad en una estructura de navegación cuando el
+  usuario solo necesitaba una señal visual dentro de cada proyecto.
+- **Decisión/Fix**: una única cuadrícula ordenada por la actividad más reciente;
+  el borde de la tarjeta comunica gravedad (crítica negro, alta rojo) y los chips
+  conservan la etiqueta textual.
+- **Regla**: si todos los elementos son la misma entidad navegable, conserva una
+  geometría común y expresa el estado dentro del componente; solo crea otra cola
+  cuando haya un flujo operativo distinto confirmado.
+- **Aplica en**: frontend, navegación, priorización, accesibilidad
+- **Promocionar**: no — es una decisión de producto específica de esta portada.

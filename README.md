@@ -40,9 +40,10 @@ cada agente y evita que dos personas se pisen el listado.
 - El identificador (`slug`) admite minúsculas, números y guiones.
 - La lista de proyectos abre en **Míos** y el conmutador **Todos** enseña el
   inventario completo con la etiqueta de su dueño.
-- Los proyectos con hallazgos **críticos o altos** abiertos se sacan a una cola
-  *Requiere atención ahora*, encima del resto y con otra presentación; dentro de
-  la lista mandan la peor gravedad y el volumen, no el orden alfabético.
+- Todos los proyectos aparecen en una sola cuadrícula, ordenados por su última
+  actividad o la de cualquiera de sus hallazgos. El borde de cada tarjeta marca
+  la peor gravedad abierta: crítica en negro, alta en rojo y el resto en su color
+  habitual; los chips mantienen el significado también en texto.
 - `/users` lista quién puede figurar como dueño. Un proyecto se traspasa desde su
   propia página, y un usuario solo se elimina cuando ya no tiene proyectos: el
   dueño es obligatorio en la base y nunca puede quedar apuntando a nadie.

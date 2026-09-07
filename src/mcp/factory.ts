@@ -55,6 +55,7 @@ const projectSchema = z.object({
 });
 const projectSummarySchema = projectSchema.extend({
   owner: userSchema,
+  lastActivityAt: timestampSchema,
   worstOpenSeverity: severitySchema.nullable(),
   openCounts: z.object({
     critical: countSchema,

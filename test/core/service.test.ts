@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AppError, SecurityInboxService } from '../../src/core/service.js';
 import type { FindingStatus, RegisterFindingInput, Severity } from '../../src/core/types.js';
@@ -59,7 +59,7 @@ function registration(
 }
 
 describe('SecurityInboxService', () => {
-  test('creates stable UUID projects and leads the list with the worst open severity', () => {
+  test('creates stable UUID projects and summarizes their open findings', () => {
     const zebra = service.createProject({ ownerId: testOwnerId(service),
       name: ' Zebra ',
       description: ' Main app ',
@@ -95,9 +95,6 @@ describe('SecurityInboxService', () => {
       }
     });
 
-    // Zebra holds an open critical and Alpha holds nothing, so Zebra leads regardless of the
-    // alphabetical order that used to decide this.
-    expect(service.listProjects().map(({ name }) => name)).toEqual(['Zebra', 'Alpha']);
     expect(service.listProjects().find(({ id }) => id === zebra.id)).toMatchObject({
       openCounts: { critical: 1, high: 1, medium: 1, low: 0, informational: 0 },
       openTotal: 3,
@@ -478,12 +475,12 @@ describe('users and project ownership', () => {
 
     expect(service.listProjects({ scope: 'mine', ownerId: ada.id }).map(({ name }) => name))
       .toEqual(['Ada one']);
-    expect(service.listProjects({ scope: 'all' }).map(({ name }) => name))
+    expect(service.listProjects({ scope: 'all' }).map(({ name }) => name).sort())
       .toEqual(['Ada one', 'Bruno one']);
-    expect(service.listProjects().map(({ name }) => name)).toEqual(['Ada one', 'Bruno one']);
+    expect(service.listProjects().map(({ name }) => name).sort()).toEqual(['Ada one', 'Bruno one']);
 
     // Every summary carries its owner, so the full list can label what belongs to whom.
-    expect(service.listProjects({ scope: 'all' }).map(({ owner }) => owner.slug))
+    expect(service.listProjects({ scope: 'all' }).map(({ owner }) => owner.slug).sort())
       .toEqual(['ada', 'bruno']);
   });
 
@@ -524,31 +521,91 @@ describe('users and project ownership', () => {
 });
 
 describe('ordering, transfer and user removal', () => {
-  test('leads with the worst open severity and breaks ties by volume', () => {
-    const ownerId = testOwnerId(service);
-    const quiet = service.createProject({ name: 'Quiet', description: 'Nothing open', ownerId });
-    const oneCritical = service.createProject({ name: 'One critical', description: 'x', ownerId });
-    const twoCritical = service.createProject({ name: 'Two critical', description: 'x', ownerId });
-    const high = service.createProject({ name: 'High only', description: 'x', ownerId });
+  test('orders projects by their latest project or finding activity, regardless of severity', () => {
+    vi.useFakeTimers();
+    try {
+      const ownerId = testOwnerId(service);
+      vi.setSystemTime('2026-09-07T08:00:00.000Z');
+      const critical = service.createProject({ name: 'Critical old', description: 'x', ownerId });
+      const criticalFinding = service.registerFinding(
+        registration(critical.id, 'critical-old', { severity: 'critical' }),
+      ).finding;
+      const editable = service.createProject({ name: 'Editable', description: 'x', ownerId });
+      const editableFinding = service.registerFinding(registration(editable.id, 'editable')).finding;
 
-    service.registerFinding(registration(oneCritical.id, 'a', { severity: 'critical' }));
-    service.registerFinding(registration(twoCritical.id, 'b', { severity: 'critical' }));
-    service.registerFinding(registration(twoCritical.id, 'c', { severity: 'critical' }));
-    service.registerFinding(registration(high.id, 'd', { severity: 'high' }));
+      vi.setSystemTime('2026-09-07T09:00:00.000Z');
+      const clean = service.createProject({ name: 'Clean recent', description: 'x', ownerId });
+      expect(service.listProjects({ scope: 'all' }).map(({ name }) => name))
+        .toEqual(['Clean recent', 'Critical old', 'Editable']);
+      expect(service.listProjects({ scope: 'all' })[0]!.lastActivityAt).toBe(clean.updatedAt);
 
-    expect(service.listProjects({ scope: 'all' }).map(({ name }) => name))
-      .toEqual(['Two critical', 'One critical', 'High only', 'Quiet']);
+      vi.setSystemTime('2026-09-07T10:00:00.000Z');
+      const noted = service.addFindingNote({
+        projectId: critical.id,
+        findingId: criticalFinding.id,
+        note: 'Fresh evidence from the latest review.',
+      });
+      expect(service.listProjects({ scope: 'all' })[0]).toMatchObject({
+        id: critical.id,
+        lastActivityAt: noted.updatedAt,
+      });
 
-    // A project whose findings are all closed falls to the bottom with the quiet ones.
-    const finding = service.listFindings({ projectId: oneCritical.id })[0]!;
-    service.updateFindingStatus({
-      projectId: oneCritical.id,
-      findingId: finding.id,
-      status: 'resolved',
-      note: 'Verified against the rebuilt query.',
-    });
-    expect(service.listProjects({ scope: 'all' }).map(({ name }) => name))
-      .toEqual(['Two critical', 'High only', 'One critical', 'Quiet']);
+      vi.setSystemTime('2026-09-07T11:00:00.000Z');
+      const edited = service.updateFinding({
+        projectId: editable.id,
+        findingId: editableFinding.id,
+        evidence: 'New evidence from a later audit.',
+      });
+      expect(service.listProjects({ scope: 'all' })[0]).toMatchObject({
+        id: editable.id,
+        lastActivityAt: edited.updatedAt,
+      });
+
+      vi.setSystemTime('2026-09-07T12:00:00.000Z');
+      const changed = service.updateFindingStatus({
+        projectId: critical.id,
+        findingId: criticalFinding.id,
+        status: 'confirmed',
+      });
+      expect(service.listProjects({ scope: 'all' })[0]).toMatchObject({
+        id: critical.id,
+        lastActivityAt: changed.updatedAt,
+      });
+
+      vi.setSystemTime('2026-09-07T13:00:00.000Z');
+      const registered = service.registerFinding(registration(clean.id, 'new-on-clean')).finding;
+      expect(service.listProjects({ scope: 'all' })[0]).toMatchObject({
+        id: clean.id,
+        lastActivityAt: registered.updatedAt,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('breaks activity ties by case-insensitive name and UUID', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime('2026-09-07T08:00:00.000Z');
+      const ownerId = testOwnerId(service);
+      const projects = [
+        service.createProject({ name: 'zeta', description: 'x', ownerId }),
+        service.createProject({ name: 'Alpha', description: 'x', ownerId }),
+        service.createProject({ name: 'alpha', description: 'x', ownerId }),
+      ];
+      const expected = [...projects].sort((left, right) => (
+        left.name.localeCompare(right.name, 'en', { sensitivity: 'base' })
+        || left.id.localeCompare(right.id)
+      ));
+
+      expect(service.listProjects({ scope: 'all' }).map(({ id }) => id))
+        .toEqual(expected.map(({ id }) => id));
+      expect(service.listProjects({ scope: 'all' }).every(
+        (project) => project.lastActivityAt === project.updatedAt,
+      )).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('transfers a project between owners and keeps its findings', () => {
