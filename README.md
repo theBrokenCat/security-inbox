@@ -48,6 +48,12 @@ hay que corregir. Los cierres siguen exigiendo una nota con la comprobación.
 La migración al esquema 4 es automática y conserva UUID, claves de reintento y
 el historial anterior; sus autores aparecen como desconocidos.
 
+## MCP por HTTP
+
+Perfil opcional `mcp-http` (puerto 3301): las mismas diez herramientas sin SSH, con
+un token por cliente que fija su usuario. Activación y clientes en
+[deployment.md](docs/deployment.md) y [mcp-and-skill.md](docs/mcp-and-skill.md).
+
 ## Lectura sin MCP
 
 Para quien no puede hablar MCP (una sesión que solo tiene navegador o `curl`, un

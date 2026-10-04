@@ -7,7 +7,7 @@ const compose = readFileSync('compose.yaml', 'utf8');
 const verifyDemo = readFileSync('scripts/verify-demo.sh', 'utf8');
 
 function serviceBlock(name: string): string {
-  return compose.match(new RegExp(`  ${name}:[\\s\\S]*?(?=\\n  [a-z]+:|\\nnetworks:|$)`))?.[0] ?? '';
+  return compose.match(new RegExp(`\\n  ${name}:[\\s\\S]*?(?=\\n  (?:#|[a-z][a-z-]*:)|\\nnetworks:|$)`))?.[0] ?? '';
 }
 
 test('Docker image includes runtime assets while only data is writable', () => {
@@ -47,6 +47,12 @@ test('Compose defaults to loopback and supports an explicit web bind with stdio 
   expect(web.match(/^\s+- "[^\"]+"$/gm)).toEqual(['      - "${SECURITY_INBOX_WEB_BIND:-127.0.0.1}:3300:3300"']);
   expect(web).toContain('restart: unless-stopped');
   expect(mcp).not.toMatch(/\n\s+ports:/);
+  const mcpHttp = serviceBlock('mcp-http');
+  expect(mcpHttp).not.toContain('build:');
+  expect(mcpHttp).toContain('command: ["node", "dist/src/mcp/http-server.js"]');
+  expect(mcpHttp).toContain('profiles: ["mcp-http"]');
+  expect(mcpHttp.match(/^\s+- "[^\"]+"$/gm)).toEqual(['      - "${SECURITY_INBOX_MCP_BIND:-127.0.0.1}:3301:3301"']);
+  expect(compose).toContain('SECURITY_INBOX_MCP_TOKENS_FILE: /app/data/mcp-tokens');
   expect(compose).not.toContain('internal: true');
   expect(compose).not.toMatch(/^\s*networks:/m);
 });

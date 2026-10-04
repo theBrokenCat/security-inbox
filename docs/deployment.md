@@ -55,7 +55,30 @@ docker compose ps web
 curl --fail http://192.168.0.130:3300/
 ```
 
+**Esquema v5.** La primera apertura con esta versión añade `findings.external_ref`
+(sin reconstruir tablas). Haz la copia de arriba antes, y reconstruye la imagen
+(`docker compose build app`) antes de que ningún cliente abra la base: un MCP con la
+imagen anterior rechazaría después la versión 5.
+
 No ejecutar `seed` ni `demo` sobre la base compartida: añaden fixtures.
+
+## MCP por HTTP (opcional)
+
+Para clientes que no pueden lanzar un proceso por SSH. Mismas herramientas y reglas
+que el MCP por stdio; el token de cada cliente dice con qué usuario escribe y sin
+token válido no pasa ninguna petición. Desde `/root/Proyectos/security-inbox`:
+
+```sh
+umask 077
+printf 'guzman %s\n' "$(openssl rand -hex 32)" >> data/mcp-tokens
+chown 1000:1000 data/mcp-tokens
+echo 'SECURITY_INBOX_MCP_BIND=192.168.0.130' >> .env   # solo si debe verse en la LAN
+docker compose --profile mcp-http up -d mcp-http
+```
+
+El token se entrega a su dueño por un canal privado y no se commitea. Para revocar o
+añadir clientes, edita `data/mcp-tokens` y `docker compose --profile mcp-http restart
+mcp-http`. Sin `SECURITY_INBOX_MCP_BIND` publica solo en loopback.
 Reiniciar los clientes MCP después de actualizar la imagen. Para parar solo la
 web: `docker compose stop web`; los datos permanecen en `data`.
 

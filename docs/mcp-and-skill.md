@@ -128,6 +128,26 @@ filesystem del servidor. Normaliza symlinks en el cliente y busca por
 `directoryPath`, nunca solo por nombre. Para carpetas montadas, el alta normal
 conserva las comprobaciones de acceso y canonicalización del servidor.
 
+## MCP por HTTP
+
+Si el servidor tiene activado el perfil `mcp-http` (ver deployment.md), un cliente
+puede conectarse sin SSH con el token que le entregue Arturo:
+
+```sh
+claude mcp add --scope user --transport http security-inbox http://192.168.0.130:3301/mcp \
+  --header "Authorization: Bearer $SECURITY_INBOX_TOKEN"
+```
+
+```toml
+# Codex
+[mcp_servers.security-inbox]
+url = "http://192.168.0.130:3301/mcp"
+bearer_token_env_var = "SECURITY_INBOX_TOKEN"
+```
+
+El usuario no se configura en el cliente: lo fija el token. Arranca al instante, sin
+contenedor por sesión.
+
 ## Lectura sin MCP
 
 Si un cliente no puede lanzar el MCP (por ejemplo, una sesión sin SSH), puede leer por

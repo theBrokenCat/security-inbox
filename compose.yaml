@@ -13,6 +13,8 @@ x-app: &app
     # schema version 3. Not authentication: see README.
     SECURITY_INBOX_USER: ${SECURITY_INBOX_USER:-}
     SECURITY_INBOX_DEFAULT_USER: ${SECURITY_INBOX_DEFAULT_USER:-${SECURITY_INBOX_USER:-}}
+    # Optional HTTP MCP (profile "mcp-http"): "<user-slug> <token>" lines, kept in ./data.
+    SECURITY_INBOX_MCP_TOKENS_FILE: /app/data/mcp-tokens
   volumes:
     - type: bind
       source: ./data
@@ -53,3 +55,12 @@ services:
   mcp:
     <<: *app
     command: ["node", "dist/src/mcp/server.js"]
+
+  # Opt-in: `docker compose --profile mcp-http up -d mcp-http`. Loopback by default, like web.
+  mcp-http:
+    <<: *app
+    command: ["node", "dist/src/mcp/http-server.js"]
+    profiles: ["mcp-http"]
+    ports:
+      - "${SECURITY_INBOX_MCP_BIND:-127.0.0.1}:3301:3301"
+    restart: unless-stopped

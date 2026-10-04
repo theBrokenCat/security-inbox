@@ -38,6 +38,12 @@
   (una tarea `T-044`, una línea de backlog, una URL). `list_findings` filtra por él
   exacto. Solo entra en el fingerprint cuando tiene valor, para que los reintentos de
   hallazgos anteriores a v5 sigan siendo idempotentes.
+- `src/mcp/http.ts` sirve las mismas herramientas por HTTP (`/mcp`, perfil Compose
+  `mcp-http`, puerto 3301, loopback por defecto) con un servidor nuevo por petición.
+  `src/mcp/tokens.ts` lee `SECURITY_INBOX_MCP_TOKENS_FILE` (`<slug> <token>` por línea,
+  tokens de 32+ caracteres, solo se guardan sus SHA-256). El token es el equivalente
+  HTTP de `SECURITY_INBOX_USER`: atribución resuelta en el adaptador. Lo que añade es
+  acceso al transporte: sin token conocido no llega nada al MCP.
 - `src/web/read-api.ts` añade a la web una API JSON de solo lectura (`/api/projects…`)
   y `/projects/:id/export.md`. Reutiliza el control de Host y la validación del
   servicio, no escribe y no pide CSRF; sus errores son JSON con los códigos públicos.
