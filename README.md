@@ -7,6 +7,48 @@ sin revisar; guardarla no inicia una investigación ni una corrección. Web y MC
 usan el mismo servicio y la misma base SQLite. Cada proyecto pertenece a un
 usuario, que sirve para atribuir trabajo y no para restringir el acceso.
 
+## Novedades — 4 de octubre de 2026
+
+Cinco mejoras propuestas por Guzmán, publicadas en `main` (`60f5a96..0c72131`) y
+desplegadas en arturo-dev el mismo día. Detalle en cada commit y en `AGENTS.md`.
+
+- **Filtro de secretos.** Altas, ediciones, notas y notas de cierre que parezcan
+  llevar una contraseña, token o clave se rechazan con `SECRET_DETECTED` (web 422
+  conservando el formulario; MCP nombrando los campos). No se enmascara y el error no
+  repite el valor. Prima la precisión: la prosa sobre contraseñas, el código y los
+  marcadores (`<redacted>`, `${VAR}`, `****`) pasan.
+- **Proyectos identificados por su remoto de git.** `register_project` y
+  `list_projects` aceptan `repositoryReference` (`git remote get-url origin`, en
+  cualquier forma), normalizado a `host/ruta` y siempre sin credenciales. En el alta
+  gana a `directoryPath`: el mismo repositorio en dos máquinas es un solo proyecto, y
+  uno registrado solo por ruta adopta la referencia la primera vez que llega.
+- **Referencia externa en los hallazgos (esquema v5).** `externalRef` enlaza el
+  hallazgo con el trabajo que lo sigue fuera (una tarea `T-044`, una línea de
+  backlog, una URL); se edita en web y MCP y `list_findings` filtra por ella. La
+  migración es un `ADD COLUMN` y los reintentos de hallazgos anteriores siguen siendo
+  idempotentes.
+- **Lectura sin MCP.** API JSON de solo lectura (`/api/projects…`) y exportación
+  Markdown por proyecto (`/projects/:id/export.md`), con el mismo control de Host que
+  la web. Ver «Lectura sin MCP».
+- **MCP por HTTP, opcional.** Perfil Compose `mcp-http` (puerto 3301, loopback por
+  defecto) con las mismas diez herramientas sin SSH ni contenedor por sesión. Un token
+  por cliente fija su usuario; sin token válido no pasa ninguna petición. Va en HTTP
+  plano: solo dentro de la VPN. **No está activado en arturo-dev**; ver
+  [deployment.md](docs/deployment.md).
+
+Antes de publicar pasó una revisión de seguridad (0 críticos, 2 altos y 9 medios,
+todos corregidos en `0c72131` y cubiertos por tests). Verificación: 195/195 tests,
+typecheck y build en el contenedor de Node 24.
+
+**Despliegue en arturo-dev (4-oct, 18:33 UTC).** Copia previa
+`data/backups/before-v5-20261004T183337Z.sqlite`; migración a v5 con los mismos 3
+usuarios, 3 proyectos, 9 hallazgos y 16 eventos e integridad correcta; web sana. En
+el servidor algunos tests se agotaron por tiempo por la carga de otras cargas de
+trabajo (load average 20–31 en 4 núcleos); con plazos amplios pasan salvo
+`opens a new database concurrently from two processes`, cuyas 32 rondas (3–7 s cada
+una con esa carga) no caben en sus 120 s. Volver atrás: restaurar la copia y
+`git checkout 8b5f24e` antes de reconstruir la imagen.
+
 ## Plataforma central
 
 La instalación de casa está en **[arturo-dev](http://192.168.0.130:3300)** y guarda
