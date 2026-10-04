@@ -65,6 +65,7 @@ type FindingRow = {
   file_path: string | null;
   line_number: number | null;
   commit_ref: string | null;
+  external_ref: string | null;
   evidence: string;
   recommendation: string | null;
   origin: string;
@@ -134,6 +135,7 @@ function toFinding(row: FindingRow): Finding {
     filePath: row.file_path,
     lineNumber: row.line_number,
     commitRef: row.commit_ref,
+    externalRef: row.external_ref,
     evidence: row.evidence,
     recommendation: row.recommendation,
     origin: row.origin,
@@ -317,11 +319,11 @@ export class SecurityInboxRepository {
     this.database.prepare(`
       INSERT INTO findings (
         id, project_id, idempotency_key, request_fingerprint, title, normalized_title,
-        description, severity, status, file_path, line_number, commit_ref, evidence,
+        description, severity, status, file_path, line_number, commit_ref, external_ref, evidence,
         recommendation, origin, created_at, updated_at
       ) VALUES (
         @id, @projectId, @idempotencyKey, @requestFingerprint, @title, @normalizedTitle,
-        @description, @severity, @status, @filePath, @lineNumber, @commitRef, @evidence,
+        @description, @severity, @status, @filePath, @lineNumber, @commitRef, @externalRef, @evidence,
         @recommendation, @origin, @createdAt, @updatedAt
       )
     `).run(finding);
@@ -346,6 +348,7 @@ export class SecurityInboxRepository {
       WHERE project_id = @projectId
         AND (@severity IS NULL OR severity = @severity)
         AND (@status IS NULL OR status = @status)
+        AND (@externalRef IS NULL OR external_ref = @externalRef)
         AND (
           @query IS NULL
           OR instr(lower(title), lower(@query)) > 0
@@ -354,6 +357,7 @@ export class SecurityInboxRepository {
           OR instr(lower(origin), lower(@query)) > 0
           OR instr(lower(file_path), lower(@query)) > 0
           OR instr(lower(commit_ref), lower(@query)) > 0
+          OR instr(lower(external_ref), lower(@query)) > 0
         )
     `;
     const parameters = {
@@ -361,6 +365,7 @@ export class SecurityInboxRepository {
       severity: input.severity ?? null,
       status: input.status ?? null,
       query: input.query ?? null,
+      externalRef: input.externalRef ?? null,
       limit: input.limit ?? 100,
       offset: input.offset ?? 0,
     };
@@ -383,6 +388,7 @@ export class SecurityInboxRepository {
           origin: finding.origin,
           filePath: finding.filePath,
           lineNumber: finding.lineNumber,
+          externalRef: finding.externalRef,
           updatedAt: finding.updatedAt,
         };
       });
@@ -404,6 +410,7 @@ export class SecurityInboxRepository {
         file_path = @filePath,
         line_number = @lineNumber,
         commit_ref = @commitRef,
+        external_ref = @externalRef,
         evidence = @evidence,
         recommendation = @recommendation,
         origin = @origin,

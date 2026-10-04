@@ -20,6 +20,7 @@
       <div><dt>Origen</dt><dd>{{ finding.origin }}</dd></div>
       <div><dt>Ubicación</dt><dd>{% if finding.filePath %}<code>{{ finding.filePath }}{% if finding.lineNumber %}:{{ finding.lineNumber }}{% endif %}</code>{% else %}No indicada{% endif %}</dd></div>
       <div><dt>Commit</dt><dd>{{ finding.commitRef or 'No indicado' }}</dd></div>
+      <div><dt>Referencia externa</dt><dd data-external-ref>{{ finding.externalRef or 'Sin vincular' }}</dd></div>
       <div><dt>Actualizado</dt><dd><time datetime="{{ finding.updatedAt }}">{{ finding.updatedAt | friendlyDate }}</time></dd></div>
     </dl>
     <section class="case-section"><p class="section-label">Contexto</p><p class="preserve-lines">{{ finding.description }}</p></section>
@@ -41,6 +42,7 @@
           <label>Archivo <input name="filePath" maxlength="1000" value="{{ edit.filePath or '' }}" {{ invalid(editErrors, 'filePath', 'edit-') }}>{{ fieldError(editErrors, 'filePath', 'edit-') }}</label>
           <label>Línea <input name="lineNumber" type="number" min="1" max="10000000" value="{{ edit.lineNumber or '' }}" {{ invalid(editErrors, 'lineNumber', 'edit-') }}>{{ fieldError(editErrors, 'lineNumber', 'edit-') }}</label>
           <label class="span-2">Commit <input name="commitRef" maxlength="200" value="{{ edit.commitRef or '' }}" {{ invalid(editErrors, 'commitRef', 'edit-') }}>{{ fieldError(editErrors, 'commitRef', 'edit-') }}</label>
+          <label class="span-2">Referencia externa <input name="externalRef" maxlength="200" value="{{ edit.externalRef or '' }}" placeholder="T-044, línea del backlog o URL" {{ invalid(editErrors, 'externalRef', 'edit-') }}>{{ fieldError(editErrors, 'externalRef', 'edit-') }}</label>
           <label class="span-2">Evidencia <textarea name="evidence" maxlength="10000" rows="5" {{ invalid(editErrors, 'evidence', 'edit-') }}>{{ edit.evidence }}</textarea>{{ fieldError(editErrors, 'evidence', 'edit-') }}</label>
           <label class="span-2">Recomendación <textarea name="recommendation" maxlength="5000" rows="3" {{ invalid(editErrors, 'recommendation', 'edit-') }}>{{ edit.recommendation or '' }}</textarea>{{ fieldError(editErrors, 'recommendation', 'edit-') }}</label>
           <label class="span-2">Nota de edición <span class="optional">opcional</span><textarea name="note" maxlength="5000" rows="2" {{ invalid(editErrors, 'note', 'edit-') }}>{{ edit.note or '' }}</textarea>{{ fieldError(editErrors, 'note', 'edit-') }}</label>

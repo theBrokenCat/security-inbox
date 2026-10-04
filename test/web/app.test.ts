@@ -294,6 +294,20 @@ describe('Security Inbox web adapter', () => {
     expect(filtered.body).toContain('value="SQL"');
   });
 
+  test('shows and edits the external reference of a finding', async () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Linked', description: 'Tracked' });
+    const finding = service.registerFinding(registration(project.id, 'linked', { externalRef: 'T-044' })).finding;
+    const detail = await get(`/projects/${project.id}/findings/${finding.id}`);
+    expect(detail.body).toMatch(/data-external-ref>T-044</);
+    const edited = await post(`/projects/${project.id}/findings/${finding.id}/edit`, {
+      _csrf: await csrf(), title: finding.title, description: finding.description, severity: finding.severity,
+      origin: finding.origin, filePath: 'src/users.ts', lineNumber: '42', commitRef: 'abc123', externalRef: 'T-045',
+      evidence: finding.evidence, recommendation: finding.recommendation ?? '',
+    });
+    expect(edited.statusCode).toBeLessThan(400);
+    expect(service.getFinding({ projectId: project.id, findingId: finding.id }).externalRef).toBe('T-045');
+  });
+
   test('keeps the form and explains why when a new finding looks like it contains a secret', async () => {
     const project = service.createProject({ ownerId: testOwnerId(service), name: 'Leaks', description: 'Guarded' });
     const token = await csrf();

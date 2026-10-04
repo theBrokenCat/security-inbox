@@ -8,7 +8,7 @@ import { userSlugSchema } from '../core/validation.js';
 
 export type SqliteDatabase = InstanceType<typeof BetterSqlite3>;
 
-const currentSchemaVersion = 4;
+const currentSchemaVersion = 5;
 const uuidIdCheck = `
   length(id) = 36
   AND id GLOB '????????-????-????-????-????????????'
@@ -217,6 +217,17 @@ const migrationV4 = `
   );
 `;
 
+// A nullable column needs no rebuild: ADD COLUMN keeps every row, fingerprint and event.
+// external_ref links a finding to the work that tracks it outside the inbox (a task id, a
+// backlog line, an issue URL); the partial index serves list_findings filtered by it.
+const migrationV5 = `
+  ALTER TABLE findings ADD COLUMN external_ref TEXT CHECK (
+    external_ref IS NULL OR length(trim(external_ref)) BETWEEN 1 AND 200
+  );
+  CREATE INDEX idx_findings_project_external_ref
+    ON findings(project_id, external_ref) WHERE external_ref IS NOT NULL;
+`;
+
 const walRetryDelays = [10, 25, 50, 100, 200];
 const walWaitSignal = new Int32Array(new SharedArrayBuffer(4));
 
@@ -346,6 +357,11 @@ export function openDatabase(
           }
           database.pragma('user_version = 4');
           currentVersion = 4;
+        }
+        if (currentVersion === 4) {
+          database.exec(migrationV5);
+          database.pragma('user_version = 5');
+          currentVersion = 5;
         }
         if (currentVersion !== currentSchemaVersion) {
           throw new Error(`Unsupported database schema version ${currentVersion}; expected ${currentSchemaVersion}`);

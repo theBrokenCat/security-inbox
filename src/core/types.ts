@@ -108,6 +108,7 @@ export type Finding = {
   filePath: string | null;
   lineNumber: number | null;
   commitRef: string | null;
+  externalRef: string | null;
   evidence: string;
   recommendation: string | null;
   origin: string;
@@ -124,6 +125,7 @@ export type FindingSummary = Pick<
   | 'origin'
   | 'filePath'
   | 'lineNumber'
+  | 'externalRef'
   | 'updatedAt'
 >;
 export type FindingEvent = {
@@ -152,6 +154,7 @@ export type RegisterFindingInput = {
   filePath?: string | null;
   lineNumber?: number | null;
   commitRef?: string | null;
+  externalRef?: string | null;
   evidence?: string;
   recommendation?: string | null;
   origin?: string;
@@ -163,6 +166,7 @@ export type EditableFindingFields = {
   filePath?: string | null;
   lineNumber?: number | null;
   commitRef?: string | null;
+  externalRef?: string | null;
   evidence?: string;
   recommendation?: string | null;
   origin?: string;
@@ -173,6 +177,8 @@ export type ListFindingsInput = {
   severity?: Severity;
   status?: FindingStatus;
   query?: string;
+  /** Exact external reference, for "which findings does this task track". */
+  externalRef?: string;
   limit?: number;
   offset?: number;
 };

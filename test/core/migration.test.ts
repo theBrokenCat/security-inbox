@@ -157,7 +157,7 @@ test('migrates an empty database without needing a default user', () => {
   service.close();
 
   const database = openDatabase(path);
-  expect(database.pragma('user_version', { simple: true })).toBe(4);
+  expect(database.pragma('user_version', { simple: true })).toBe(5);
   database.close();
 });
 
@@ -215,4 +215,38 @@ test('rolls back v4 when integrity validation fails, keeping the v3 schema and h
     expect(database.prepare('SELECT count(*) AS total FROM finding_events').get()).toEqual({ total: 1 });
     expect(database.prepare("SELECT name FROM sqlite_schema WHERE name = 'findings_legacy'").get()).toBeUndefined();
   } finally { database.close(); }
+});
+
+test('upgrades v4 to v5 keeping every finding and letting pre-v5 retries stay idempotent', () => {
+  const path = temporaryDatabase();
+  const service = new SecurityInboxService(path);
+  const ownerId = service.registerUser({ slug: 'guzman' }).user.id;
+  const project = service.createProject({ ownerId, name: 'Legacy', description: 'Before external references' });
+  const registration = {
+    projectId: project.id,
+    idempotencyKey: 'pre-v5',
+    title: 'Missing rate limit on login',
+    description: 'Unlimited attempts are accepted.',
+  };
+  const original = service.registerFinding(registration).finding;
+  service.close();
+
+  // Rebuild what a v4 file looks like: no external_ref column, no index, user_version 4.
+  const legacy = new BetterSqlite3(path);
+  legacy.exec('DROP INDEX idx_findings_project_external_ref; ALTER TABLE findings DROP COLUMN external_ref;');
+  legacy.pragma('user_version = 4');
+  legacy.close();
+
+  const upgraded = new SecurityInboxService(path);
+  try {
+    const database = openDatabase(path);
+    expect(database.pragma('user_version', { simple: true })).toBe(5);
+    database.close();
+    expect(upgraded.getFinding({ projectId: project.id, findingId: original.id })).toEqual({ ...original, externalRef: null });
+    const retry = upgraded.registerFinding(registration);
+    expect(retry.created).toBe(false);
+    expect(retry.finding.id).toBe(original.id);
+  } finally {
+    upgraded.close();
+  }
 });

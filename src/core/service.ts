@@ -60,6 +60,7 @@ const editableKeys = [
   'filePath',
   'lineNumber',
   'commitRef',
+  'externalRef',
   'evidence',
   'recommendation',
   'origin',
@@ -88,6 +89,9 @@ function fingerprint(input: RegisterFindingInput): string {
     evidence: input.evidence,
     recommendation: input.recommendation ?? null,
     origin: input.origin,
+    // Only present when set, so retries of findings stored before schema v5 keep their
+    // original fingerprint and are not reported as idempotency conflicts.
+    ...(input.externalRef ? { externalRef: input.externalRef } : {}),
   };
   return createHash('sha256').update(JSON.stringify(canonicalPayload)).digest('hex');
 }
@@ -249,6 +253,7 @@ export class SecurityInboxService {
       description: value.description,
       filePath: value.filePath,
       commitRef: value.commitRef,
+      externalRef: value.externalRef,
       evidence: value.evidence,
       recommendation: value.recommendation,
       origin: value.origin,
@@ -282,6 +287,7 @@ export class SecurityInboxService {
         filePath: value.filePath ?? null,
         lineNumber: value.lineNumber ?? null,
         commitRef: value.commitRef ?? null,
+        externalRef: value.externalRef ?? null,
         evidence: value.evidence,
         recommendation: value.recommendation ?? null,
         origin: value.origin,
@@ -336,6 +342,7 @@ export class SecurityInboxService {
       description: value.description,
       filePath: value.filePath,
       commitRef: value.commitRef,
+      externalRef: value.externalRef,
       evidence: value.evidence,
       recommendation: value.recommendation,
       origin: value.origin,
@@ -369,6 +376,7 @@ export class SecurityInboxService {
         filePath,
         lineNumber,
         commitRef: value.commitRef === undefined ? original.commitRef : value.commitRef,
+        externalRef: value.externalRef === undefined ? original.externalRef : value.externalRef,
         evidence: value.evidence ?? original.evidence,
         recommendation: value.recommendation === undefined ? original.recommendation : value.recommendation,
         origin: value.origin ?? original.origin,

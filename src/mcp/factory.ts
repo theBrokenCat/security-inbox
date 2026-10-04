@@ -80,6 +80,7 @@ const findingSchema = z.object({
   filePath: z.string().nullable(),
   lineNumber: z.number().int().nullable(),
   commitRef: z.string().nullable(),
+  externalRef: z.string().nullable(),
   evidence: z.string(),
   recommendation: z.string().nullable(),
   origin: z.string(),
@@ -108,6 +109,7 @@ const findingSummarySchema = findingSchema.pick({
   origin: true,
   filePath: true,
   lineNumber: true,
+  externalRef: true,
   updatedAt: true,
 });
 const duplicateSchema = findingSchema.pick({
@@ -310,13 +312,16 @@ export function createSecurityInboxMcpServer(
 
   server.registerTool('register_finding', {
     description: 'Save any incidental project issue with a title and short context, then continue the current task. '
-      + 'Severity and evidence can be added during later review. Check for existing findings first.',
+      + 'Severity and evidence can be added during later review. Check for existing findings first. '
+      + 'externalRef links the finding to the work that tracks it elsewhere (a task id such as T-044, '
+      + 'a backlog line, an issue URL).',
     inputSchema: advertisedInput(registerFindingToolSchema),
     outputSchema: registerFindingOutputSchema,
   }, async (input) => handle(registerFindingToolSchema, input, (value) => service.registerFinding(value, currentActor())));
 
   server.registerTool('list_findings', {
-    description: 'List or search project issues, including file paths and commits. Follow nextOffset '
+    description: 'List or search project issues, including file paths, commits and external references; '
+      + 'pass externalRef to get exactly the findings tracked by one task or backlog line. Follow nextOffset '
       + 'until it is null to retrieve all pages; collect the pending list before changing its findings.',
     inputSchema: advertisedInput(listFindingsInputSchema),
     outputSchema: listFindingsOutputSchema,

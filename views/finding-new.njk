@@ -25,12 +25,13 @@
     <label class="span-2">Contexto <textarea name="description" required maxlength="10000" rows="4" placeholder="Qué has observado y qué ayudará a retomarlo." {{ invalid(fieldErrors, 'description') }}>{{ form.description or '' }}</textarea>{{ fieldError(fieldErrors, 'description') }}</label>
     <label>Archivo <span class="optional">opcional</span><input name="filePath" maxlength="1000" value="{{ form.filePath or '' }}" autocomplete="off" {{ invalid(fieldErrors, 'filePath') }}>{{ fieldError(fieldErrors, 'filePath') }}</label>
     <label>Línea <span class="optional">opcional</span><input name="lineNumber" type="number" min="1" max="10000000" value="{{ form.lineNumber or '' }}" {{ invalid(fieldErrors, 'lineNumber') }}>{{ fieldError(fieldErrors, 'lineNumber') }}</label>
-    <details class="span-2 finding-extra"{% if formError or (form.severity and form.severity != 'unclassified') or form.origin or form.commitRef or form.evidence or form.recommendation %} open{% endif %}>
+    <details class="span-2 finding-extra"{% if formError or (form.severity and form.severity != 'unclassified') or form.origin or form.commitRef or form.externalRef or form.evidence or form.recommendation %} open{% endif %}>
       <summary>Más detalles <span class="optional">opcionales</span></summary>
       <div class="finding-form finding-form--compact">
         <label>Gravedad <select name="severity" {{ invalid(fieldErrors, 'severity') }}>{% for option in severityOptions %}<option value="{{ option.value }}"{% if (form.severity or 'unclassified') == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>{{ fieldError(fieldErrors, 'severity') }}</label>
         <label>Origen <input name="origin" maxlength="200" value="{{ form.origin or '' }}" placeholder="Se registra automáticamente" autocomplete="off" {{ invalid(fieldErrors, 'origin') }}>{{ fieldError(fieldErrors, 'origin') }}</label>
         <label class="span-2">Commit <input name="commitRef" maxlength="200" value="{{ form.commitRef or '' }}" autocomplete="off" {{ invalid(fieldErrors, 'commitRef') }}>{{ fieldError(fieldErrors, 'commitRef') }}</label>
+        <label class="span-2">Referencia externa <input name="externalRef" maxlength="200" value="{{ form.externalRef or '' }}" autocomplete="off" placeholder="T-044, línea del backlog o URL" {{ invalid(fieldErrors, 'externalRef') }}>{{ fieldError(fieldErrors, 'externalRef') }}</label>
         <label class="span-2">Evidencia <textarea name="evidence" maxlength="10000" rows="4" {{ invalid(fieldErrors, 'evidence') }}>{{ form.evidence or '' }}</textarea>{{ fieldError(fieldErrors, 'evidence') }}</label>
         <label class="span-2">Recomendación <textarea name="recommendation" maxlength="5000" rows="3" {{ invalid(fieldErrors, 'recommendation') }}>{{ form.recommendation or '' }}</textarea>{{ fieldError(fieldErrors, 'recommendation') }}</label>
       </div>

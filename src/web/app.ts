@@ -183,7 +183,7 @@ function queryText(value: unknown): string | undefined {
 
 const findingFormFields = [
   'idempotencyKey', 'title', 'description', 'severity', 'origin', 'filePath',
-  'lineNumber', 'commitRef', 'evidence', 'recommendation', 'note', 'status',
+  'lineNumber', 'commitRef', 'externalRef', 'evidence', 'recommendation', 'note', 'status',
 ] as const;
 
 function findingFormValues(body: FormBody): FormBody {
@@ -198,6 +198,7 @@ const fieldHints: Record<string, string> = {
   filePath: 'La ruta puede tener hasta 1.000 caracteres.',
   lineNumber: 'Usa una línea entera entre 1 y 10.000.000 e indica también el archivo.',
   commitRef: 'El commit puede tener hasta 200 caracteres.',
+  externalRef: 'La referencia externa puede tener hasta 200 caracteres.',
   evidence: 'La evidencia puede tener hasta 10.000 caracteres.',
   recommendation: 'La recomendación puede tener hasta 5.000 caracteres.',
   note: 'Escribe una nota de entre 1 y 5.000 caracteres.',
@@ -568,6 +569,7 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
         filePath: optionalText(request.body, 'filePath'),
         lineNumber: lineNumber(request.body),
         commitRef: optionalText(request.body, 'commitRef'),
+        externalRef: optionalText(request.body, 'externalRef'),
         evidence: text(request.body, 'evidence'),
         recommendation: optionalText(request.body, 'recommendation'),
         origin: text(request.body, 'origin').trim() || 'web',
@@ -609,6 +611,7 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
         filePath: optionalText(request.body, 'filePath'),
         lineNumber: lineNumber(request.body),
         commitRef: optionalText(request.body, 'commitRef'),
+        externalRef: optionalText(request.body, 'externalRef'),
         evidence: text(request.body, 'evidence'),
         recommendation: optionalText(request.body, 'recommendation'),
         origin: text(request.body, 'origin'),

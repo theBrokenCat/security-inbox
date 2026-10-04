@@ -224,7 +224,7 @@ test('upgrades a v1 database to the current version without changing existing pr
   try {
     const upgraded = openDatabase(path, { defaultUserSlug: 'legacy-owner' });
     try {
-      expect(upgraded.pragma('user_version', { simple: true })).toBe(4);
+      expect(upgraded.pragma('user_version', { simple: true })).toBe(5);
       expect((upgraded.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>)
         .map(({ name }) => name)).toContain('directory_path');
       expect(upgraded.prepare('SELECT id, directory_path FROM projects').get()).toEqual({
@@ -274,14 +274,14 @@ test('rejects a future schema version without downgrading it', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-future-schema-'));
   const path = join(directory, 'inbox.sqlite');
   const seed = new BetterSqlite3(path);
-  seed.pragma('user_version = 5');
+  seed.pragma('user_version = 6');
   seed.close();
 
   try {
-    expect(() => openDatabase(path)).toThrow(/version 5/i);
+    expect(() => openDatabase(path)).toThrow(/version 6/i);
     const reopened = new BetterSqlite3(path);
     try {
-      expect(reopened.pragma('user_version', { simple: true })).toBe(5);
+      expect(reopened.pragma('user_version', { simple: true })).toBe(6);
     } finally {
       reopened.close();
     }

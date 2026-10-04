@@ -117,6 +117,20 @@ describe('SecurityInboxService', () => {
     expect(service.getFinding(identity)).toEqual(before);
   });
 
+  test('links findings to outside work with externalRef, filters by it and records edits', () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Linked', description: 'Tracked work' });
+    const tracked = service.registerFinding(registration(project.id, 'tracked', { externalRef: 'T-044' })).finding;
+    service.registerFinding(registration(project.id, 'loose', { title: 'Another issue entirely' }));
+    expect(tracked.externalRef).toBe('T-044');
+    expect(service.listFindings({ projectId: project.id, externalRef: 'T-044' }).map(({ id }) => id)).toEqual([tracked.id]);
+    expect(service.listFindings({ projectId: project.id, externalRef: 'T-044' })[0]!.externalRef).toBe('T-044');
+
+    const relinked = service.updateFinding({ projectId: project.id, findingId: tracked.id, externalRef: 'SI backlog: rate limits' });
+    expect(relinked.externalRef).toBe('SI backlog: rate limits');
+    expect(relinked.history.at(-1)!.changes).toEqual({ externalRef: { from: 'T-044', to: 'SI backlog: rate limits' } });
+    expectCode(() => service.updateFinding({ projectId: project.id, findingId: tracked.id, externalRef: 'x'.repeat(201) }), 'VALIDATION_ERROR');
+  });
+
   test('registers a project directory once and returns the stable project on retry', () => {
     const first = service.registerProjectDirectory({ ownerId: testOwnerId(service),
       name: 'checkout',

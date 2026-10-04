@@ -33,6 +33,11 @@
   `PASSWORD=valor`. Se rechaza, no se enmascara, y el error nunca repite el valor.
   Prima la precisión: la prosa sobre contraseñas y los marcadores (`<redacted>`,
   `${VAR}`, `****`) pasan.
+- El esquema v5 añade `findings.external_ref` (texto libre, hasta 200) con `ADD
+  COLUMN`, sin reconstruir: enlaza el hallazgo con el trabajo que lo sigue fuera
+  (una tarea `T-044`, una línea de backlog, una URL). `list_findings` filtra por él
+  exacto. Solo entra en el fingerprint cuando tiene valor, para que los reintentos de
+  hallazgos anteriores a v5 sigan siendo idempotentes.
 - `projects.owner_id` es `NOT NULL` con clave foránea a `users`. La migración v3
   reconstruye la tabla; SQLite obliga a hacerlo con `foreign_keys = OFF` para que
   `legacy_alter_table` impida reescribir la clave foránea de `findings`.
