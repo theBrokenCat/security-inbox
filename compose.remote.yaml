@@ -1,0 +1,16 @@
+# arturo-dev already has a private proxy publishing 192.168.0.130:3300.
+# Keep its backend address and DNS name while replacing the legacy web container.
+# Enable only on that host, alongside compose.yaml, with WEB_BIND=127.0.0.1.
+services:
+  web:
+    networks:
+      default: {}
+      inbox_proxy:
+        ipv4_address: 192.168.32.3
+        aliases:
+          - security-inbox-live-web
+
+networks:
+  inbox_proxy:
+    external: true
+    name: security-inbox-private

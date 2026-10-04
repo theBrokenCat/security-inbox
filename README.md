@@ -158,7 +158,7 @@ docker compose run --rm -T mcp
 ```
 
 El proceso web recibe `SECURITY_INBOX_CONTAINER=true` y escucha dentro del
-contenedor en `0.0.0.0:3300`; el host publica `127.0.0.1:3300` por defecto y la instalación central publica `192.168.0.130:3300`. La guía de
+contenedor en `0.0.0.0:3300`; el host publica `127.0.0.1:3300` por defecto. La instalación central conserva su proxy en `192.168.0.130:3300`, usando el override `compose.remote.yaml`. La guía de
 configuración MCP y skill está en [docs/mcp-and-skill.md](docs/mcp-and-skill.md).
 
 Para repetir el recorrido completo de forma segura:

@@ -6,6 +6,9 @@
 - Persistencia: `/root/Proyectos/security-inbox/data/security-inbox.sqlite`.
 - Usuario MCP: `thebrokencat`; es atribución, no autenticación.
 - Web: servicio Compose `web`, con `restart: unless-stopped`; Docker arranca con el servidor.
+- Acceso LAN: proxy existente `security-inbox-private-proxy`, que se conserva.
+  `compose.remote.yaml` conecta la nueva web a su red `security-inbox-private`
+  con la dirección `192.168.32.3` y el alias de su backend anterior.
 - MCP: un proceso efímero por cliente que comparte el SQLite persistente.
 
 La dirección web requiere acceso a la red de casa o a su VPN. El MCP requiere
@@ -18,14 +21,20 @@ El `.env` del servidor contiene estos ajustes, sin credenciales:
 ```dotenv
 SECURITY_INBOX_USER=thebrokencat
 SECURITY_INBOX_DEFAULT_USER=thebrokencat
-SECURITY_INBOX_WEB_BIND=192.168.0.130
+SECURITY_INBOX_WEB_BIND=127.0.0.1
 SECURITY_INBOX_WEB_ORIGIN=http://192.168.0.130:3300
+COMPOSE_FILE=compose.yaml:compose.remote.yaml
 ```
 
 La publicación por defecto sigue siendo loopback. `SECURITY_INBOX_WEB_ORIGIN`
 declara un origen exacto sin barra final, ruta ni query; Host, Origin y CSRF se
 comprueban también en la instalación remota. `.env`, datos y configuración de
 credenciales quedan fuera del contexto Docker y de Git.
+
+En este host la web publica loopback y el proxy conserva la publicación LAN.
+El contenedor anterior `security-inbox-live-web` queda parado y desconectado de
+la red privada; no arrancarlo a la vez que la nueva web. El override es específico
+de esta instalación y presupone la red y el proxy existentes.
 
 ## Actualizar
 
