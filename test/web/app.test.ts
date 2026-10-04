@@ -108,6 +108,28 @@ async function post(
 }
 
 describe('Security Inbox web adapter', () => {
+  test('accepts a configured remote origin and requires matching host, origin and CSRF', async () => {
+    await app.close();
+    const origin = 'http://192.0.2.10:3300';
+    app = buildWebApp({ service, directories: new ProjectDirectoryManager(service), origin });
+    const host = '192.0.2.10:3300';
+    const page = await get('/', host);
+    expect(page.statusCode).toBe(200);
+    const fields = { _csrf: csrfFrom(page.body), slug: 'tester' };
+    const headers = { host, origin, 'sec-fetch-site': 'same-origin' };
+    expect((await post('/session/user', fields, { headers })).statusCode).toBe(303);
+    expect((await post('/session/user', fields, { headers: { ...headers, origin: `http://${HOST}` } })).statusCode).toBe(403);
+    expect((await post('/session/user', { ...fields, _csrf: 'wrong' }, { headers })).statusCode).toBe(403);
+    expect((await get('/', '192.0.2.11:3300')).statusCode).toBe(403);
+    expect((await get('/')).statusCode).toBe(200);
+  });
+
+  test.each(['http://example.test/path', 'http://user:password@example.test', 'ftp://example.test', 'http://example.test?x=1'])
+    ('rejects a malformed configured origin: %s', (origin) => {
+      expect(() => buildWebApp({ service, directories: new ProjectDirectoryManager(service), origin }))
+        .toThrow('SECURITY_INBOX_WEB_ORIGIN');
+    });
+
   test('keeps creation off the dashboard and registers a selected directory on its own page', async () => {
     const empty = await get('/');
 

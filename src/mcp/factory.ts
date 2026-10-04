@@ -284,7 +284,9 @@ export function createSecurityInboxMcpServer(
   server.registerTool('register_project', {
     description:
       'Register a selected directory as a project owned by the configured user; '
-      + 'pass its absolute directoryPath or a returned relativePath. Its name and stored path are derived automatically.',
+      + 'pass its absolute directoryPath or a returned relativePath. Use external: true for a workspace on the agent computer '
+      + 'that the inbox server cannot access; it records the path without reading it. Resolve symlinks on the agent first. '
+      + 'Its name and stored path are derived automatically.',
     inputSchema: advertisedInput(registerProjectToolSchema),
     outputSchema: registerProjectOutputSchema,
   }, async (input) => handle(registerProjectToolSchema, input, (value) => directories.register({

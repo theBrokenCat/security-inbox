@@ -1,8 +1,10 @@
 # MCP y skill de Security Inbox
 
-## Preparación
+## Preparación para ejecución nativa en el servidor
 
-Security Inbox requiere Node 24 y una instalación ya resuelta del repositorio:
+Para usar la instalación central desde otro equipo, basta la conexión SSH
+descrita abajo. Solo para ejecutar la plataforma directamente se requiere
+Node 24 y una instalación ya resuelta del repositorio:
 
 ```sh
 npm ci
@@ -44,7 +46,7 @@ Reinicia o recarga el cliente después de guardar la configuración. La conexió
 Flujo recomendado para agentes:
 
 1. `list_projects` y comparar `directoryPath`.
-2. Si falta, `browse_project_directories` y `register_project` con su `directoryPath` absoluto o el `relativePath` devuelto. Sin ruta, la navegación nativa comienza en la carpeta personal; puedes subir hasta la raíz del filesystem. En Docker solo están disponibles las carpetas montadas. Ambas formas de selección conservan la misma identidad canónica y los reintentos devuelven el mismo proyecto.
+2. Si falta y la carpeta está en el equipo del agente, `register_project` con su `directoryPath` absoluto y `external: true`. Para carpetas montadas en el servidor, alta normal y navegación opcional. Los reintentos devuelven el mismo proyecto.
 3. Conservar el `projectId`, buscar posibles duplicados y gestionar detalle, edición, estado y notas con ese ID.
 
 ## Captura breve y revisión posterior
@@ -70,39 +72,63 @@ Cuando el usuario pide retomar pendientes, el agente recupera el detalle,
 completa lo que falte, trabaja dentro del alcance solicitado y registra una
 nota de cierre con la verificación. La plataforma no programa ni lanza agentes.
 
-## Ejemplo por SSH y Docker Compose
+## Conexión central por SSH y Docker Compose
 
-Compose crea el contenedor efímero del servicio MCP, así que no requiere asumir un contenedor ya iniciado. Para el destino remoto previsto, conserva stdio sin TTY con:
+La instalación compartida vive en `arturo-dev:/root/Proyectos/security-inbox`.
+Su web es `http://192.168.0.130:3300`. Los clientes no necesitan Node, Docker,
+una copia del repositorio ni una base local: solo SSH con acceso a `arturo-dev`.
+Compose crea un contenedor MCP efímero que comparte el SQLite del servidor.
+Mantén stdio sin TTY y usa Node directamente para reservar stdout al protocolo.
 
-```sh
-ssh -T arturo-dev docker compose -f /root/Proyectos/security-inbox/compose.yaml run --rm -T mcp
+Configuración en `~/.codex/config.toml` de Codex:
+
+```toml
+[mcp_servers.security-inbox]
+command = "ssh"
+args = ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "arturo-dev", "docker", "compose", "-f", "/root/Proyectos/security-inbox/compose.yaml", "run", "--rm", "-T", "mcp"]
+startup_timeout_sec = 30
 ```
 
-Configuración equivalente para un cliente con `mcpServers`:
+Se puede registrar mediante `codex mcp add security-inbox -- ssh -T -o
+BatchMode=yes -o ConnectTimeout=10 arturo-dev docker compose -f
+/root/Proyectos/security-inbox/compose.yaml run --rm -T mcp` y ajustar el tiempo
+inicial en el TOML. Véase la [configuración oficial de MCP en Codex](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
+En Codex ejecutado dentro de arturo-dev, usa `command = "docker"` y
+`args = ["compose", "-f", "/root/Proyectos/security-inbox/compose.yaml", "run", "--rm", "-T", "mcp"]`, sin SSH a sí mismo.
+
+Para clientes con `mcpServers`:
 
 ```json
 {
   "mcpServers": {
     "security-inbox": {
       "command": "ssh",
-      "args": [
-        "-T",
-        "arturo-dev",
-        "docker",
-        "compose",
-        "-f",
-        "/root/Proyectos/security-inbox/compose.yaml",
-        "run",
-        "--rm",
-        "-T",
-        "mcp"
-      ]
+      "args": ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "arturo-dev", "docker", "compose", "-f", "/root/Proyectos/security-inbox/compose.yaml", "run", "--rm", "-T", "mcp"]
     }
   }
 }
 ```
 
-Para otro host, sustituye el alias SSH y la ruta del archivo Compose. Compose puede escribir mensajes operativos en stderr; stdout queda reservado al protocolo MCP. El lead verificó esta receta en `arturo-dev`; la prueba automatizada no cubre SSH ni Docker.
+El usuario configurado en Compose es `thebrokencat`, que ya existe en la base.
+Para otro usuario, créalo desde la web y añade `-e SECURITY_INBOX_USER=su-slug`
+entre `-T` y `mcp` en el comando Compose. Esa variable se resuelve en el proceso
+remoto; una variable local no se transmite automáticamente por SSH.
+
+Si el repositorio está en el equipo del agente y no está montado en el servidor,
+resuelve su ruta absoluta en ese equipo y registra:
+
+```json
+{ "directoryPath": "/home/arturo/Proyectos/mi-proyecto", "external": true }
+```
+
+No se comprueba su existencia en arturo-dev ni se leen sus archivos; se guarda
+como identidad del proyecto. `browse_project_directories` sigue limitado al
+filesystem del servidor. Normaliza symlinks en el cliente y busca por
+`directoryPath`, nunca solo por nombre. Para carpetas montadas, el alta normal
+conserva las comprobaciones de acceso y canonicalización del servidor.
+
+Para operar o actualizar el servidor, consulta [deployment.md](deployment.md).
 
 ## Instalación y activación de la skill
 
@@ -113,7 +139,7 @@ mkdir -p /absolute/path/to/codex/skills/security-inbox
 cp skills/security-inbox/SKILL.md /absolute/path/to/codex/skills/security-inbox/SKILL.md
 ```
 
-Inicia una sesión nueva o recarga las skills. Invócala como `$security-inbox`; los clientes con descubrimiento automático también pueden seleccionarla por su descripción. En este repositorio solo se valida la estructura de la skill, no su activación en otros hosts.
+Inicia una sesión nueva o recarga las skills. Invócala como `$security-inbox`; los clientes con descubrimiento automático también pueden seleccionarla por su descripción. La configuración central instala la skill en `~/.codex/skills/security-inbox` y las instrucciones de [agent-instructions.md](agent-instructions.md) en `~/.codex/AGENTS.md`, tanto en el cliente como en arturo-dev. Conserva cualquier otra instrucción existente al integrar ese texto.
 
 ## Compatibilidad verificada
 

@@ -64,7 +64,7 @@ export async function startWebServer({
       accessibleRoot: environment.SECURITY_INBOX_PROJECTS_ROOT,
       displayRoot: environment.SECURITY_INBOX_PROJECTS_DISPLAY_ROOT,
     });
-    app = createApp({ service, directories, port });
+    app = createApp({ service, directories, port, origin: environment.SECURITY_INBOX_WEB_ORIGIN });
     await app.listen({ host: resolveListenHost(environment), port });
     listening = true;
     signals.once('SIGINT', onSignal);

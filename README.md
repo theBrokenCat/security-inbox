@@ -1,11 +1,25 @@
 # Security Inbox
 
-Bandeja local para apuntar fallos de cualquier tipo por proyecto: funcionales, de
+Bandeja compartida para apuntar fallos de cualquier tipo por proyecto: funcionales, de
 interfaz, calidad o seguridad. Los agentes pueden guardar lo que encuentran
 mientras hacen otra tarea y retomarlo cuando se les pida. Una anotación queda
 sin revisar; guardarla no inicia una investigación ni una corrección. Web y MCP
 usan el mismo servicio y la misma base SQLite. Cada proyecto pertenece a un
 usuario, que sirve para atribuir trabajo y no para restringir el acceso.
+
+## Plataforma central
+
+La instalación de casa está en **[arturo-dev](http://192.168.0.130:3300)** y guarda
+los datos en `/root/Proyectos/security-inbox/data/security-inbox.sqlite`.
+Los agentes conectan al MCP por SSH; no hace falta ejecutar esta aplicación ni
+mantener SQLite en su equipo. Pueden registrar su workspace local con
+`register_project({ directoryPath: "/ruta/absoluta", external: true })`, aunque
+la carpeta no exista en el servidor. El selector web muestra carpetas del servidor.
+
+La conexión, la skill y las instrucciones para agentes están en
+[docs/mcp-and-skill.md](docs/mcp-and-skill.md); la operación del servidor, en
+[docs/deployment.md](docs/deployment.md). La configuración central atribuye al
+usuario existente `thebrokencat`. El acceso web requiere la red de casa o su VPN.
 
 ## Apuntar ahora y retomar después
 
@@ -37,7 +51,7 @@ el historial anterior; sus autores aparecen como desconocidos.
 ## Requisitos e instalación
 
 - Node.js 24 (la imagen usa `node:24-bookworm`).
-- npm y, para el flujo Docker, Docker Compose v2.
+- npm y, para el flujo Docker, Docker Compose v2 o posterior.
 
 Con Node local:
 
@@ -113,7 +127,7 @@ con `demo-route-fixed-key` devuelve el mismo UUID.
 La imagen compila con `npm ci` en `node:24-bookworm` y ejecuta como el usuario no
 privilegiado `node`. `./data` se monta con escritura; la raíz de proyectos se
 monta read-only en `/projects`. Compose crea el bridge propio del proyecto y la
-web publica solo loopback del host.
+web publica loopback del host por defecto; `SECURITY_INBOX_WEB_BIND` permite una IP explícita y `SECURITY_INBOX_WEB_ORIGIN` declara el origen permitido.
 
 ```sh
 mkdir -p data
@@ -144,7 +158,7 @@ docker compose run --rm -T mcp
 ```
 
 El proceso web recibe `SECURITY_INBOX_CONTAINER=true` y escucha dentro del
-contenedor en `0.0.0.0:3300`; el host solo ve `127.0.0.1:3300`. La guía de
+contenedor en `0.0.0.0:3300`; el host publica `127.0.0.1:3300` por defecto y la instalación central publica `192.168.0.130:3300`. La guía de
 configuración MCP y skill está en [docs/mcp-and-skill.md](docs/mcp-and-skill.md).
 
 Para repetir el recorrido completo de forma segura:
@@ -165,8 +179,9 @@ de contenedores y red, pero conserva `./data`.
    automáticamente y el proyecto queda a tu nombre.
 2. Un agente comienza con `list_projects`, que por defecto solo devuelve los
    proyectos de `SECURITY_INBOX_USER`. Si falta la carpeta, usa
-   `browse_project_directories` y `register_project` con su `directoryPath`
-   completo o el `relativePath` devuelto; después conserva el UUID.
+   `register_project` con su `directoryPath` completo y `external: true` cuando
+   está en su propio equipo. Para carpetas montadas puede navegar y registrar
+   normalmente; después conserva el UUID.
 3. Lista hallazgos, comprueba candidatos parecidos y
    registra título y contexto con una clave de idempotencia estable. Los detalles
    pueden completarse después.
@@ -176,8 +191,8 @@ de contenedores y red, pero conserva `./data`.
 6. Reinicia `web` y vuelve a conectar MCP; el UUID y los eventos deben seguir en
    `./data`.
 
-Si el stack ya está desplegado en el equipo remoto, el túnel para abrir la web
-localmente es:
+La instalación central se abre directamente en `http://192.168.0.130:3300`.
+Para una instalación que publique solo loopback, el túnel opcional es:
 
 ```sh
 ssh -N -L 3300:127.0.0.1:3300 arturo-dev
@@ -195,7 +210,7 @@ El destino operativo previsto es `arturo-dev:/root/Proyectos/security-inbox`.
   detección externa ni correcciones por sí sola.
 - MCP se sirve por stdio y requiere un cliente configurado; `-T` es necesario
   en Compose para mantener stdout reservado al protocolo.
-- Solo se documenta Node 24, Docker Compose v2 y el flujo remoto indicado; no se
+- Solo se documenta Node 24, Docker Compose v2 o posterior y el flujo remoto indicado; no se
   afirma compatibilidad con otros hosts.
 - No se incluyen secretos ni credenciales en fixtures, imagen, Compose o docs.
 - No se siguen symlinks que salgan de la raíz configurada y la web nunca lee el

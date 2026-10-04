@@ -142,3 +142,17 @@ test('canonicalizes an internal symlink to the same stored path and project id',
   expect(real.project.directoryPath).toBe('/srv/projects/alpha');
   expect(service.listProjects()).toHaveLength(1);
 });
+
+test('records an agent workspace outside the server mount without filesystem access', () => {
+  const ownerId = testOwnerId(service);
+  const directoryPath = join(directory, 'agent-only', 'project');
+  expectCode(() => manager.register({ ownerId, directoryPath }), 'DIRECTORY_INVALID');
+  const first = manager.register({ ownerId, directoryPath, external: true });
+  expect(first.project).toMatchObject({ name: 'project', directoryPath });
+  expect(manager.register({ ownerId, directoryPath: `${directoryPath}/../project`, external: true }))
+    .toEqual({ project: first.project, created: false });
+  expectCode(() => manager.browse({ directoryPath }), 'DIRECTORY_INVALID');
+  expectCode(() => manager.register({ ownerId, relativePath: 'alpha', external: true }), 'VALIDATION_ERROR');
+  expectCode(() => manager.register({ ownerId, directoryPath: 'relative/project', external: true }), 'DIRECTORY_INVALID');
+  expectCode(() => manager.register({ ownerId, directoryPath: `${directoryPath}\0`, external: true }), 'DIRECTORY_INVALID');
+});

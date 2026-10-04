@@ -70,9 +70,13 @@ export const browseProjectDirectoriesInputSchema = z.object({
 
 export const registerProjectDirectorySelectionSchema = browseProjectDirectoriesInputSchema.safeExtend({
   description: optionalText(2_000),
+  external: z.boolean().optional(),
 }).superRefine((value, context) => {
   if (value.relativePath === undefined && value.directoryPath === undefined) {
     context.addIssue({ code: 'custom', path: ['directoryPath'], message: 'Select a directory' });
+  }
+  if (value.external && value.directoryPath === undefined) {
+    context.addIssue({ code: 'custom', path: ['directoryPath'], message: 'External projects require an absolute directoryPath' });
   }
 });
 

@@ -33,7 +33,9 @@
 - La imagen incluye `views` y `public` para que web y sus pruebas funcionen;
   código/dependencias quedan root-owned y solo `/app/data` se entrega a `node`.
 - Compose usa `node:24-bookworm`, monta `./data`, usa el bridge por defecto del
-  proyecto y publica la web solo en `127.0.0.1:3300`. Con
+  proyecto y publica por defecto en `127.0.0.1:3300`. Para la instalación central,
+  `SECURITY_INBOX_WEB_BIND` y `SECURITY_INBOX_WEB_ORIGIN` declaran la IP y el origen
+  exactos permitidos, conservando los controles de Host, Origin y CSRF. Con
   `SECURITY_INBOX_CONTAINER=true`, la web escucha dentro en `0.0.0.0:3300`.
 - En Linux, `./data` y sus archivos deben ser escribibles por UID/GID 1000; usa
   `chown -R 1000:1000 data` si un SQLite heredado pertenece a root.
@@ -44,6 +46,14 @@
 - `SECURITY_INBOX_PROJECTS_ROOT`, si se configura, limita el árbol accesible;
   `SECURITY_INBOX_PROJECTS_DISPLAY_ROOT` es la ruta persistida/visible. Compose
   monta `${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}` read-only.
+- `register_project` acepta `external: true` con `directoryPath` absoluto para
+  carpetas del equipo del agente. Solo registra su identidad, sin explorar ni
+  leer esa ruta en el servidor. El agente resuelve sus symlinks antes de enviarla.
+- La bandeja compartida está en `arturo-dev:/root/Proyectos/security-inbox`, web
+  `http://192.168.0.130:3300`. Usar el MCP `security-inbox` para fallos incidentales
+  fuera de la tarea actual, comprobar duplicados y continuar; no levantar otra
+  base local. La conexión e instalación de la skill se describen en
+  `docs/mcp-and-skill.md`.
 
 ## Límites
 

@@ -27,7 +27,7 @@ test('Docker image includes runtime assets while only data is writable', () => {
   expect(dockerfile).toContain('USER node');
 });
 
-test('Compose uses its project bridge with loopback-only web and stdio MCP', () => {
+test('Compose defaults to loopback and supports an explicit web bind with stdio MCP', () => {
   const app = serviceBlock('app');
   const web = serviceBlock('web');
   const mcp = serviceBlock('mcp');
@@ -44,7 +44,8 @@ test('Compose uses its project bridge with loopback-only web and stdio MCP', () 
   expect(compose).toContain('source: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}');
   expect(compose).toContain('target: /projects');
   expect(compose).toContain('read_only: true');
-  expect(web.match(/^\s+- "[^\"]+"$/gm)).toEqual(['      - "127.0.0.1:3300:3300"']);
+  expect(web.match(/^\s+- "[^\"]+"$/gm)).toEqual(['      - "${SECURITY_INBOX_WEB_BIND:-127.0.0.1}:3300:3300"']);
+  expect(web).toContain('restart: unless-stopped');
   expect(mcp).not.toMatch(/\n\s+ports:/);
   expect(compose).not.toContain('internal: true');
   expect(compose).not.toMatch(/^\s*networks:/m);

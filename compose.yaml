@@ -6,6 +6,7 @@ x-app: &app
   environment:
     SECURITY_INBOX_DB: /app/data/security-inbox.sqlite
     SECURITY_INBOX_CONTAINER: "true"
+    SECURITY_INBOX_WEB_ORIGIN: ${SECURITY_INBOX_WEB_ORIGIN:-}
     SECURITY_INBOX_PROJECTS_ROOT: /projects
     SECURITY_INBOX_PROJECTS_DISPLAY_ROOT: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}
     # Owner of projects registered over MCP, and the user inherited by projects that predate
@@ -33,7 +34,8 @@ services:
     <<: *app
     command: ["npm", "run", "web"]
     ports:
-      - "127.0.0.1:3300:3300"
+      - "${SECURITY_INBOX_WEB_BIND:-127.0.0.1}:3300:3300"
+    restart: unless-stopped
     healthcheck:
       test:
         - CMD

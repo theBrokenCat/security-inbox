@@ -89,6 +89,7 @@ export type DirectorySelection = {
   directoryPath?: string;
 };
 export type RegisterProjectDirectoryInput = DirectorySelection & {
+  external?: boolean;
   description?: string | null;
   ownerId: string;
 };

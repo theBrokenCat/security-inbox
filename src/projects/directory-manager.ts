@@ -102,13 +102,24 @@ export class ProjectDirectoryManager {
   register(input: RegisterProjectDirectoryInput): RegisterProjectDirectoryResult {
     const parsed = registerProjectDirectoryInputSchema.safeParse(input);
     if (!parsed.success) throw validationError(parsed.error);
-    const selected = this.resolveDirectory(this.selectionPath(parsed.data));
+    // A remote inbox cannot inspect an agent's local filesystem. External paths are
+    // reported workspace identities only; they never authorize server-side browsing.
+    const displayPath = parsed.data.external
+      ? this.externalDirectoryPath(parsed.data.directoryPath!)
+      : this.resolveDirectory(this.selectionPath(parsed.data)).displayPath;
     return this.service.registerProjectDirectory({
-      name: basename(selected.displayPath) || selected.displayPath,
-      description: parsed.data.description || `Local project at ${selected.displayPath}`,
-      directoryPath: selected.displayPath,
+      name: basename(displayPath) || displayPath,
+      description: parsed.data.description || `${parsed.data.external ? 'External workspace' : 'Local project'} at ${displayPath}`,
+      directoryPath: displayPath,
       ownerId: parsed.data.ownerId,
     });
+  }
+
+  private externalDirectoryPath(value: string): string {
+    if (value.includes('\0') || !isAbsolute(value)) {
+      throw new AppError('DIRECTORY_INVALID', 'Choose an absolute directory path');
+    }
+    return resolve(value);
   }
 
   private selectionPath(input: DirectorySelection, fallback = ''): string {

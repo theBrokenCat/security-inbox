@@ -23,6 +23,7 @@ export type WebAppOptions = {
   service: SecurityInboxService;
   directories: ProjectDirectoryManager;
   port?: number;
+  origin?: string;
 };
 
 type FormBody = Record<string, unknown>;
@@ -281,10 +282,22 @@ function friendlyDate(value: unknown): string {
   return Number.isNaN(date.getTime()) ? value : friendlyDateFormatter.format(date);
 }
 
-export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions): FastifyInstance {
+export function buildWebApp({ service, directories, port = 3300, origin }: WebAppOptions): FastifyInstance {
   const app = Fastify();
   const csrfToken = randomBytes(32).toString('hex');
-  const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
+  const allowedOrigins = new Map([
+    `127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`,
+  ].map((host) => [host, `http://${host}`]));
+  if (origin) {
+    let configured: URL;
+    try {
+      configured = new URL(origin);
+      if (!['http:', 'https:'].includes(configured.protocol) || configured.origin !== origin) throw new Error();
+    } catch {
+      throw new Error('SECURITY_INBOX_WEB_ORIGIN must be an http(s) origin without a path, credentials or query');
+    }
+    allowedOrigins.set(configured.host, configured.origin);
+  }
   const templates = new nunjucks.Environment(
     new nunjucks.FileSystemLoader(join(process.cwd(), 'views'), { noCache: true }),
     { autoescape: true, throwOnUndefined: false },
@@ -330,10 +343,10 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
       .header('referrer-policy', 'no-referrer')
       .header('x-content-type-options', 'nosniff')
       .header('x-frame-options', 'DENY');
-    if (!request.headers.host || !allowedHosts.has(request.headers.host)) {
+    if (!request.headers.host || !allowedOrigins.has(request.headers.host)) {
       return reply.code(403).type('text/html; charset=utf-8').send(render('error.njk', {
         title: 'Solicitud rechazada',
-        message: 'Abre Security Inbox desde una dirección local permitida.',
+        message: 'Abre Security Inbox desde una dirección configurada.',
       }));
     }
   });
@@ -342,7 +355,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     if (request.method !== 'POST') return;
     const host = request.headers.host!;
     const fetchSite = request.headers['sec-fetch-site'];
-    const hasTrustedOrigin = request.headers.origin === `http://${host}`;
+    const hasTrustedOrigin = request.headers.origin === allowedOrigins.get(host);
     const hasOpaqueSameOrigin = request.headers.origin === 'null' && fetchSite === 'same-origin';
     if (
       (!hasTrustedOrigin && !hasOpaqueSameOrigin)
@@ -350,7 +363,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     ) {
       return reply.code(403).type('text/html; charset=utf-8').send(render('error.njk', {
         title: 'Solicitud rechazada',
-        message: 'El origen de la petición no coincide con esta aplicación local.',
+        message: 'El origen de la petición no coincide con esta aplicación.',
       }));
     }
 

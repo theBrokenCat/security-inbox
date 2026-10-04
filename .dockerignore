@@ -1,9 +1,11 @@
 .git
 .gitignore
+.aws
+.env
+.env.*
+data
 node_modules
 dist
-data
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-.env*

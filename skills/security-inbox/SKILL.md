@@ -7,8 +7,14 @@ description: Record and revisit project issues through Security Inbox MCP, inclu
 
 Capture what was observed, keep enough context to resume later, and continue the current task.
 
+Use the configured `security-inbox` MCP. The shared installation is on
+`arturo-dev:/root/Proyectos/security-inbox`; its web is `http://192.168.0.130:3300`.
+SSH transports MCP stdio to the server, where SQLite persists. No local web,
+Node installation or local database is needed by the agent. If the connection
+fails, report it and continue the assigned task; do not silently create another inbox.
+
 - Identify the project with `list_projects` and its stored `directoryPath`; never choose by name alone or invent a `projectId`. The default list belongs to `SECURITY_INBOX_USER`. Use `scope: "all"` when the target project belongs to someone else.
-- If the project is missing, use its known absolute `directoryPath` with `browse_project_directories` and `register_project`, or navigate using returned `relativePath` values. Native browsing starts in the personal folder and can move up; an explicitly configured root or Docker mount limits availability. Pass one path form per request. Ownership comes from the process configuration. If it returns `USER_REQUIRED`, request the missing user configuration rather than guessing a slug.
+- Resolve the workspace's absolute path and symlinks on the agent's own machine. If the project is missing and its folder is not accessible to the inbox server, call `register_project` with that `directoryPath` and `external: true`. This records the workspace identity without reading the server filesystem. For folders mounted on the server, use normal `register_project`, optionally browsing with `browse_project_directories`. Remote browsing shows server folders, not the agent's local folders. Pass one path form per request. Ownership comes from the process configuration. If it returns `USER_REQUIRED`, request the missing user configuration rather than guessing a slug.
 - When a concrete issue appears outside the current task, search the project with `list_findings.query`, using a distinctive title or known file path. Read likely matches and add context to an existing issue when appropriate. Keep this check brief; do not expand the investigation just to fill the inbox.
 - Register a new observation with `projectId`, a stable `idempotencyKey`, `title` and a short `description` explaining what happened and how to find it again. Include known file, line and commit information. Evidence, severity, origin and recommendation are optional; leave severity unclassified when uncertain and do not invent evidence. Reuse the same key and payload for a retry.
 - After recording it, continue the original task. Reporting an unrelated issue does not authorize fixing it, scanning the rest of the project or changing the user's priorities.

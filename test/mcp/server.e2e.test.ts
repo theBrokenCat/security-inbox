@@ -219,6 +219,23 @@ test('registers directories outside the launch folder in native mode over stdio'
   }
 });
 
+test('captures issues for an agent workspace unavailable on the inbox server', async () => {
+  const directoryPath = '/home/agent-only/workspace';
+  const arguments_ = { directoryPath, external: true };
+  const registered = await client.callTool({ name: 'register_project', arguments: arguments_ });
+  expect(registered.structuredContent).toMatchObject({ created: true, project: { directoryPath } });
+  const id = (registered.structuredContent as { project: { id: string } }).project.id;
+  const retry = await client.callTool({ name: 'register_project', arguments: arguments_ });
+  expect(retry.structuredContent).toMatchObject({ created: false, project: { id } });
+  const finding = await client.callTool({ name: 'register_finding', arguments: {
+    projectId: id, idempotencyKey: 'external-workspace-issue', title: 'Focus lost on save',
+    description: 'Observed in the agent workspace while editing a form.',
+  } });
+  expect(finding.structuredContent).toMatchObject({ created: true, finding: { projectId: id } });
+  const invalid = await client.callTool({ name: 'register_project', arguments: { relativePath: 'Gamma', external: true } });
+  expect(invalid.structuredContent).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+});
+
 test('returns invalid inputs as structured generic errors without echoing them', async () => {
   const secretInput = 'DO NOT ECHO INVALID INPUT';
   const invalid = await client.callTool({
