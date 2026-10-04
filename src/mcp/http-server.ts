@@ -19,6 +19,8 @@ try {
     tokens,
     host: resolveListenHost(process.env),
     port: Number(process.env.SECURITY_INBOX_MCP_PORT ?? 3301),
+    // Browsers send Origin; CLI clients do not. Empty by default: no browser may call it.
+    allowedOrigins: new Set((process.env.SECURITY_INBOX_MCP_ALLOWED_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean)),
   });
   console.log(`Security Inbox MCP over HTTP at ${running.url} (${tokens.size} client token(s))`);
   const shutdown = () => {

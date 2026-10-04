@@ -19,6 +19,13 @@ describe('secret detection', () => {
     ['credentials in a URL', 'postgres://app:S3cr3tPassw0rd@db.internal:5432/app'],
     ['password or key assignment', 'DB_PASSWORD=hunter2hunter2'],
     ['password or key assignment', 'api_key: "9f8e7d6c5b4a3210"'],
+    ['password or key assignment', `AWS_SECRET_ACCESS_KEY=${repeat('w', 40)}`],
+    ['password or key assignment', 'DB_PASS=correcthorsebattery'],
+    ['credentials in a URL', 'redis://:S3cr3tPassw0rd@cache:6379'],
+    ['GitLab token', `${'glpat-'}${repeat('g', 20)}`],
+    ['npm token', `${'npm_'}${repeat('n', 36)}`],
+    ['Stripe key', `${'sk_live_'}${repeat('s', 24)}`],
+    ['bearer token', `Authorization: Bearer ${repeat('t', 32)}`],
   ])('reports a %s', (kind, text) => {
     expect(detectSecrets(text)).toContain(kind);
   });
@@ -34,8 +41,20 @@ describe('secret detection', () => {
     'https://github.com/theBrokenCat/security-inbox.git',
     'secret: changeme',
     'sk-short',
+    'pwd=/home/user/project',
+    'password: requiredText(200)',
+    'token: expired',
+    'The Bearer token is checked in middleware.',
   ])('accepts ordinary text: %s', (text) => {
     expect(detectSecrets(text)).toEqual([]);
+  });
+
+  test('stays linear on long hostile input', () => {
+    const hostile = `${'a'.repeat(10_000)}://`.repeat(1);
+    const started = performance.now();
+    detectSecrets(hostile);
+    detectSecrets('a+'.repeat(5_000));
+    expect(performance.now() - started).toBeLessThan(50);
   });
 
   test('names every field with a secret and never echoes the value', () => {

@@ -18,8 +18,24 @@ describe('repository reference normalisation', () => {
     ['git+ssh://git@gitlab.example.com/group/sub/repo.git', 'gitlab.example.com/group/sub/repo'],
     ['github.com/theBrokenCat/security-inbox', 'github.com/thebrokencat/security-inbox'],
     ['demo://security-inbox-api', 'demo://security-inbox-api'],
+    ['https://git.example.com:8443/team/app.git', 'git.example.com:8443/team/app'],
+    ['https://github.com:443/acme/app', 'github.com/acme/app'],
   ])('%s -> %s', (raw, expected) => {
     expect(normalizeRepositoryReference(raw)).toBe(expected);
+  });
+
+  test.each([
+    (token: string) => `git+https://user:${token}@github.com/acme/app.git`,
+    (token: string) => `svn+ssh://user:${token}@svn.example.com/acme/app`,
+    (token: string) => `ftp://user:${token}@files.example.com/app`,
+    (token: string) => `https://oauth2:${token}@[bad/acme/app`,
+    (token: string) => `user:${token}@github.com/acme/app`,
+    (token: string) => `${token}@github.com:acme/app.git`,
+  ])('never keeps a credential: %s', (spell) => {
+    const token = `${'ghp_'}${'c'.repeat(36)}`;
+    const normalized = normalizeRepositoryReference(spell(token));
+    expect(normalized.toLowerCase()).not.toContain(token.toLowerCase());
+    expect(normalized).not.toContain('@');
   });
 
   test('drops credentials embedded in an HTTPS remote', () => {

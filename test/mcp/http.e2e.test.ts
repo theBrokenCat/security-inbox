@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { connect as tcpConnect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -62,6 +63,40 @@ describe('MCP over HTTP', () => {
     expect(forged.status).toBe(401);
     const elsewhere = await fetch(running.url.replace('/mcp', '/other'), { method: 'POST', headers: { ...headers, authorization: `Bearer ${guzmanToken}` }, body });
     expect(elsewhere.status).toBe(404);
+  });
+
+  test('answers from the headers alone, before an unauthenticated body arrives', async () => {
+    const { port } = new URL(running.url);
+    const answer = await new Promise<string>((resolve, reject) => {
+      const socket = tcpConnect(Number(port), '127.0.0.1', () => {
+        // Announces a body it never sends: the gate must not wait for it.
+        socket.write('POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 100000\r\n\r\n');
+      });
+      let received = '';
+      socket.on('data', (chunk) => { received += chunk.toString(); if (received.includes('\r\n\r\n')) { socket.destroy(); resolve(received); } });
+      socket.on('error', reject);
+      setTimeout(() => { socket.destroy(); reject(new Error('no answer within 2 s')); }, 2_000);
+    });
+    expect(answer.split('\r\n')[0]).toContain('401');
+  });
+
+  test('refuses browser origins, oversized bodies and malformed hosts', async () => {
+    const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${guzmanToken}` };
+    const fromPage = await fetch(running.url, { method: 'POST', headers: { ...headers, origin: 'http://evil.example' }, body: '{}' });
+    expect(fromPage.status).toBe(403);
+    const huge = await fetch(running.url, { method: 'POST', headers, body: 'x'.repeat(1024 * 1024 + 1) });
+    expect(huge.status).toBe(413);
+    const { port } = new URL(running.url);
+    const malformed = await new Promise<string>((resolve, reject) => {
+      const socket = tcpConnect(Number(port), '127.0.0.1', () => {
+        socket.write(`POST /mcp HTTP/1.1\r\nHost: [::1\r\nAuthorization: Bearer ${guzmanToken}\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}`);
+      });
+      let received = '';
+      socket.on('data', (chunk) => { received += chunk.toString(); if (received.includes('\r\n\r\n')) { socket.destroy(); resolve(received); } });
+      socket.on('error', reject);
+      setTimeout(() => { socket.destroy(); reject(new Error('no answer')); }, 2_000);
+    });
+    expect(malformed.split('\r\n')[0]).toMatch(/400/);
   });
 
   test('serves the same ten tools as stdio', async () => {

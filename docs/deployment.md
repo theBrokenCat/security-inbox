@@ -76,6 +76,13 @@ echo 'SECURITY_INBOX_MCP_BIND=192.168.0.130' >> .env   # solo si debe verse en l
 docker compose --profile mcp-http up -d mcp-http
 ```
 
+El tráfico va en **HTTP plano**: el token viaja en claro. Publícalo fuera de
+loopback solo por un enlace de confianza (la VPN de casa, WireGuard o un proxy TLS),
+nunca expuesto a internet. Usa tokens aleatorios como el de arriba: el servidor solo
+exige 32 caracteres, no mide su entropía. Los navegadores envían `Origin` y se rechazan
+salvo que estén en `SECURITY_INBOX_MCP_ALLOWED_ORIGINS`; los clientes de terminal no lo
+envían.
+
 El token se entrega a su dueño por un canal privado y no se commitea. Para revocar o
 añadir clientes, edita `data/mcp-tokens` y `docker compose --profile mcp-http restart
 mcp-http`. Sin `SECURITY_INBOX_MCP_BIND` publica solo en loopback.

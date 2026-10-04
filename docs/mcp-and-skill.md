@@ -146,7 +146,9 @@ bearer_token_env_var = "SECURITY_INBOX_TOKEN"
 ```
 
 El usuario no se configura en el cliente: lo fija el token. Arranca al instante, sin
-contenedor por sesión.
+contenedor por sesión. Ojo: `claude mcp add --header` expande la variable y deja el
+token en claro en `~/.claude.json`; la variante de Codex lo lee del entorno. Y el
+transporte es HTTP plano: úsalo solo dentro de la red de casa o su VPN.
 
 ## Lectura sin MCP
 

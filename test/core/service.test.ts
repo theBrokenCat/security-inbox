@@ -71,7 +71,8 @@ describe('SecurityInboxService', () => {
     expect(zebra).toMatchObject({
       name: 'Zebra',
       description: 'Main app',
-      repositoryReference: 'git@example.test:zebra.git',
+      // Normalised like register_project, so both paths agree on one identity per repository.
+      repositoryReference: 'example.test/zebra',
       directoryPath: null,
     });
     expect(zebra.createdAt).toBe(zebra.updatedAt);

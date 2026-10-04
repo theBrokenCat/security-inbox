@@ -73,7 +73,11 @@
   cualquier forma). `src/core/repository-reference.ts` lo normaliza a `host/ruta`
   sin credenciales; en el alta gana a `directoryPath`, de modo que el mismo repo en
   dos máquinas es un solo proyecto, y un proyecto registrado solo por ruta adopta la
-  referencia la primera vez que llega. `createProject` (seed) no normaliza.
+  referencia la primera vez que llega. `createProject` también normaliza. Las
+  credenciales se descartan con cualquier esquema o forma (todo lo anterior al último
+  `@` de la autoridad) y la referencia y la descripción pasan además por
+  `assertNoSecrets`. Es atribución: el primero que registra una referencia se queda
+  el proyecto, igual que con `directoryPath`; no hay propiedad que verificar.
 - `register_project` acepta `external: true` con `directoryPath` absoluto para
   carpetas del equipo del agente. Solo registra su identidad, sin explorar ni
   leer esa ruta en el servidor. El agente resuelve sus symlinks antes de enviarla.

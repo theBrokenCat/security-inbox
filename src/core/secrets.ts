@@ -13,20 +13,29 @@ const secretPatterns: ReadonlyArray<{ kind: string; pattern: RegExp }> = [
   { kind: 'API key', pattern: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}/ },
   { kind: 'Google API key', pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { kind: 'JSON Web Token', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
+  { kind: 'GitLab token', pattern: /\bglpat-[A-Za-z0-9_-]{20,}/ },
+  { kind: 'npm token', pattern: /\bnpm_[A-Za-z0-9]{36}\b/ },
+  { kind: 'Stripe key', pattern: /\b[sr]k_live_[A-Za-z0-9]{16,}/ },
+  { kind: 'bearer token', pattern: /\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/ },
 ];
 
+// A value that is a path or code (`/home/user`, `requiredText(200)`) is not a credential: an
+// inbox of security findings receives exactly that kind of snippet.
+const codeLike = /^\/|[()]/;
 const placeholder = /^(?:\*+|x{3,}|<[^>]*>|\[[^\]]*\]|\$\{[^}]*\}|\$[A-Z_][A-Z0-9_]*|%[A-Z_]+%|process\.env\.\w+|env\.\w+|changeme|redacted|example\w*|placeholder|dummy|secret|password|your[-_]\w*|\.{3,}|…)$/i;
 
-// "user:password@host" inside a URL.
-const urlCredentials = /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:([^\s@/]+)@/gi;
-// "password = value", "DB_PASSWORD=value" or "api_key: value"; only letters bound the name, so
-// SCREAMING_SNAKE variables match. The value must look like a value, not a word in prose.
-const assignment = /(?<![A-Za-z])(?:password|passwd|pwd|secret|api[-_]?key|access[-_]?token|auth[-_]?token|client[-_]?secret|private[-_]?key)(?![A-Za-z])["']?\s*[:=]\s*["']?([^\s"',;)]{8,})/gi;
+// "user:password@host" inside a URL, also with an empty user ("redis://:pass@host"). The scheme
+// is bounded so a long run of scheme-like characters cannot make the scan quadratic.
+const urlCredentials = /\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s:@/]*:([^\s@/]+)@/gi;
+// "password = value", "DB_PASS=value", "AWS_SECRET_ACCESS_KEY=value" or "api_key: value". Only
+// letters bound the keyword, and further _WORD parts may follow it before the separator, so
+// SCREAMING_SNAKE names match. The value must look like a value, not a word in prose.
+const assignment = /(?<![A-Za-z])(?:pass(?:wd|word)?|secret|token|api[-_]?key|access[-_]?token|auth[-_]?token|client[-_]?secret|private[-_]?key)(?:[-_][A-Za-z0-9]+)*(?![A-Za-z0-9])["']?\s*[:=]\s*["']?([^\s"',;]{8,})/gi;
 
 function hasRealValue(expression: RegExp, text: string): boolean {
   for (const match of text.matchAll(expression)) {
     const value = (match[1] ?? '').replace(/["'`]+$/, '');
-    if (value && !placeholder.test(value)) return true;
+    if (value && !placeholder.test(value) && !codeLike.test(value)) return true;
   }
   return false;
 }

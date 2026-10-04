@@ -146,13 +146,17 @@ export class SecurityInboxService {
 
   createProject(input: CreateProjectInput): Project {
     const value = parse(createProjectInputSchema, input);
+    const repositoryReference = value.repositoryReference
+      ? normalizeRepositoryReference(value.repositoryReference)
+      : null;
+    assertNoSecrets({ description: value.description, repositoryReference });
     this.requireUser(value.ownerId);
     const now = timestampAfter();
     const project: Project = {
       id: randomUUID(),
       name: value.name,
       description: value.description,
-      repositoryReference: value.repositoryReference ?? null,
+      repositoryReference,
       directoryPath: null,
       ownerId: value.ownerId,
       createdAt: now,
@@ -176,6 +180,9 @@ export class SecurityInboxService {
     const repositoryReference = value.repositoryReference
       ? normalizeRepositoryReference(value.repositoryReference)
       : null;
+    // Normalisation already drops URL credentials; this catches anything left in the path or
+    // pasted into the description, which every reader of the inbox sees.
+    assertNoSecrets({ description: value.description, repositoryReference });
     return this.repository.immediate(() => {
       this.requireUser(value.ownerId);
       if (repositoryReference) {
@@ -249,6 +256,7 @@ export class SecurityInboxService {
     const value = parse(registerFindingInputSchema, input);
     const attributedActor = parse(findingActorSchema, actor);
     assertNoSecrets({
+      idempotencyKey: value.idempotencyKey,
       title: value.title,
       description: value.description,
       filePath: value.filePath,

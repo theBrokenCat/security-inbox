@@ -51,30 +51,47 @@ function allFindings(service: SecurityInboxService, filter: ListFindingsInput): 
   return findings;
 }
 
-function markdownLine(text: string): string {
-  return text.replace(/\r?\n/g, ' ').replace(/([\\`*_[\]|<>])/g, '\\$1');
+// The export is read by Markdown viewers and agents, not by this origin (which serves it with
+// a CSP that runs nothing), so it is made inert: no line breaks of any spelling inside
+// one-line fields, no raw HTML anywhere, and code spans that a backtick cannot close.
+const lineBreak = /\r\n?|\n/g;
+
+function inline(text: string): string {
+  return text.replace(lineBreak, ' ').replace(/([\\`*_[\]|])/g, '\\$1').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function code(text: string): string {
+  return `\`${text.replace(lineBreak, ' ').replace(/`/g, "'")}\``;
+}
+
+function plain(text: string): string {
+  return text.replace(lineBreak, ' ').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function quote(text: string): string {
+  return text.split(lineBreak).map((line) => `> ${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}`).join('\n');
 }
 
 export function findingsMarkdown(project: ProjectSummary, findings: FindingDetail[], generatedAt: string): string {
   const lines = [
-    `# ${markdownLine(project.name)} — hallazgos`,
+    `# ${inline(project.name)} — hallazgos`,
     '',
-    `Exportado de Security Inbox el ${generatedAt}. Proyecto \`${project.id}\`${project.repositoryReference ? ` · repositorio \`${markdownLine(project.repositoryReference)}\`` : ''}${project.directoryPath ? ` · ruta \`${markdownLine(project.directoryPath)}\`` : ''}.`,
+    `Exportado de Security Inbox el ${generatedAt}. Proyecto ${code(project.id)}${project.repositoryReference ? ` · repositorio ${code(project.repositoryReference)}` : ''}${project.directoryPath ? ` · ruta ${code(project.directoryPath)}` : ''}.`,
     '',
     `${findings.length} hallazgo(s).`,
     '',
   ];
   for (const finding of findings) {
-    lines.push(`## ${markdownLine(finding.title)}`, '');
-    lines.push(`- **Id**: \`${finding.id}\``);
-    lines.push(`- **Estado**: ${finding.status} · **Gravedad**: ${finding.severity} · **Origen**: ${markdownLine(finding.origin)}`);
-    if (finding.filePath) lines.push(`- **Ubicación**: \`${markdownLine(finding.filePath)}${finding.lineNumber ? `:${finding.lineNumber}` : ''}\``);
-    if (finding.commitRef) lines.push(`- **Commit**: \`${markdownLine(finding.commitRef)}\``);
-    if (finding.externalRef) lines.push(`- **Referencia externa**: ${markdownLine(finding.externalRef)}`);
+    lines.push(`## ${inline(finding.title)}`, '');
+    lines.push(`- **Id**: ${code(finding.id)}`);
+    lines.push(`- **Estado**: ${finding.status} · **Gravedad**: ${finding.severity} · **Origen**: ${inline(finding.origin)}`);
+    if (finding.filePath) lines.push(`- **Ubicación**: ${code(`${finding.filePath}${finding.lineNumber ? `:${finding.lineNumber}` : ''}`)}`);
+    if (finding.commitRef) lines.push(`- **Commit**: ${code(finding.commitRef)}`);
+    if (finding.externalRef) lines.push(`- **Referencia externa**: ${plain(finding.externalRef)}`);
     lines.push(`- **Actualizado**: ${finding.updatedAt}`, '');
-    lines.push(finding.description.split(/\r?\n/).map((line) => `> ${line}`).join('\n'), '');
-    if (finding.evidence) lines.push('**Evidencia**', '', finding.evidence.split(/\r?\n/).map((line) => `> ${line}`).join('\n'), '');
-    if (finding.recommendation) lines.push('**Recomendación**', '', finding.recommendation.split(/\r?\n/).map((line) => `> ${line}`).join('\n'), '');
+    lines.push(quote(finding.description), '');
+    if (finding.evidence) lines.push('**Evidencia**', '', quote(finding.evidence), '');
+    if (finding.recommendation) lines.push('**Recomendación**', '', quote(finding.recommendation), '');
   }
   return `${lines.join('\n').trimEnd()}\n`;
 }

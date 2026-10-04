@@ -107,7 +107,26 @@ describe('read API', () => {
     expect(body).toContain('- **Referencia externa**: T-044');
     expect(body).toContain('`src/a.ts:3`');
     expect(body).toContain('> Line one of 1\n> line two');
+    expect(body).toContain('- **Referencia externa**: T-044');
     const filtered = await get(`/projects/${mineId}/export.md?externalRef=T-044`);
     expect(filtered.body).toContain('1 hallazgo(s).');
+  });
+
+  test('keeps hostile text inert in the Markdown export', async () => {
+    service.registerFinding({
+      projectId: otherId,
+      idempotencyKey: 'hostile',
+      title: 'Title\r# Injected heading <img src=x onerror=alert(1)>',
+      description: 'one\rtwo <script>alert(1)</script>',
+      filePath: 'src/`weird`.ts',
+      externalRef: 'https://tracker.example/issues/a_b',
+    });
+    const body = (await get(`/projects/${otherId}/export.md`)).body;
+    expect(body).not.toMatch(/^# Injected heading/m);
+    expect(body).not.toContain('<img');
+    expect(body).not.toContain('<script>');
+    expect(body).toContain('> one\n> two &lt;script&gt;');
+    expect(body).toContain("`src/'weird'.ts`");
+    expect(body).toContain('- **Referencia externa**: https://tracker.example/issues/a_b');
   });
 });
