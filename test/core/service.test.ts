@@ -103,6 +103,20 @@ describe('SecurityInboxService', () => {
     expect(service.listProjects().find(({ id }) => id === alpha.id)?.openTotal).toBe(0);
   });
 
+  test('rejects secrets in findings, edits, status notes and notes without storing anything', () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Secrets', description: 'No leaks' });
+    const token = `${'ghp_'}${'a'.repeat(36)}`;
+    expectCode(() => service.registerFinding(registration(project.id, 'leak', { evidence: `token ${token}` })), 'SECRET_DETECTED');
+    expect(service.listFindings({ projectId: project.id })).toEqual([]);
+
+    const identity = { projectId: project.id, findingId: service.registerFinding(registration(project.id, 'clean')).finding.id };
+    const before = service.getFinding(identity);
+    expectCode(() => service.updateFinding({ ...identity, description: `DB_PASSWORD=${'p'.repeat(12)}` }), 'SECRET_DETECTED');
+    expectCode(() => service.updateFindingStatus({ ...identity, status: 'resolved', note: `uses ${token}` }), 'SECRET_DETECTED');
+    expectCode(() => service.addFindingNote({ ...identity, note: 'postgres://app:R3alPassw0rd@db/app' }), 'SECRET_DETECTED');
+    expect(service.getFinding(identity)).toEqual(before);
+  });
+
   test('registers a project directory once and returns the stable project on retry', () => {
     const first = service.registerProjectDirectory({ ownerId: testOwnerId(service),
       name: 'checkout',

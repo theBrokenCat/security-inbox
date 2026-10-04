@@ -27,6 +27,12 @@
   desactivadas y `legacy_alter_table`, conservando UUID, fingerprints e historial.
 - Web y MCP usan `listFindingsPage`; MCP devuelve `nextOffset` y la web conserva
   filtros al paginar. Recoger las páginas antes de cambiar la actividad.
+- `src/core/secrets.ts` rechaza con `SECRET_DETECTED` (web 422, MCP con los campos)
+  cualquier alta, edición, nota o nota de cierre que parezca llevar una credencial:
+  claves privadas, tokens conocidos, `usuario:clave@` en URLs y asignaciones tipo
+  `PASSWORD=valor`. Se rechaza, no se enmascara, y el error nunca repite el valor.
+  Prima la precisión: la prosa sobre contraseñas y los marcadores (`<redacted>`,
+  `${VAR}`, `****`) pasan.
 - `projects.owner_id` es `NOT NULL` con clave foránea a `users`. La migración v3
   reconstruye la tabla; SQLite obliga a hacerlo con `foreign_keys = OFF` para que
   `legacy_alter_table` impida reescribir la clave foránea de `findings`.

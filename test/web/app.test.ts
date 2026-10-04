@@ -294,6 +294,22 @@ describe('Security Inbox web adapter', () => {
     expect(filtered.body).toContain('value="SQL"');
   });
 
+  test('keeps the form and explains why when a new finding looks like it contains a secret', async () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Leaks', description: 'Guarded' });
+    const token = await csrf();
+    const response = await post(`/projects/${project.id}/findings`, {
+      _csrf: token,
+      idempotencyKey: 'leaky-web-finding',
+      title: 'Hardcoded credentials',
+      description: `The config ships DB_PASSWORD=${'p'.repeat(12)}`,
+      severity: 'high',
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.body).toContain('parece una contraseña, token o clave');
+    expect(response.body).toContain('Hardcoded credentials');
+    expect(service.listFindings({ projectId: project.id })).toEqual([]);
+  });
+
   test('prechecks duplicates, then creates, views, edits, changes status, and adds a note', async () => {
     const project = service.createProject({ ownerId: testOwnerId(service), name: 'Flows', description: 'All flows' });
     service.registerFinding(registration(project.id, 'existing'));

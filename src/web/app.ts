@@ -145,6 +145,11 @@ const publicErrors: Record<AppError['code'], { status: number; title: string; me
     title: 'El usuario tiene proyectos',
     message: 'Traspasa sus proyectos a otra persona antes de eliminarlo.',
   },
+  SECRET_DETECTED: {
+    status: 422,
+    title: 'Parece contener un secreto',
+    message: 'Hay algo que parece una contraseña, token o clave. No se guardó nada: quítalo o tápalo y vuelve a enviarlo. La bandeja no tiene autenticación y todos ven todo.',
+  },
 };
 
 const csp = [
@@ -651,6 +656,7 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
       if (request.method === 'POST' && (
         error.code === 'VALIDATION_ERROR' || error.code === 'TERMINAL_NOTE_REQUIRED'
         || error.code === 'NO_STATUS_CHANGE' || error.code === 'IDEMPOTENCY_CONFLICT'
+        || error.code === 'SECRET_DETECTED'
       )) {
         const route = request.routeOptions.url;
         const params = request.params as Partial<FindingParams>;

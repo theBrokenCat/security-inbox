@@ -29,6 +29,8 @@ const publicMessages: Record<AppErrorCode, string> = {
   USER_NOT_FOUND: 'SECURITY_INBOX_USER does not match a registered user.',
   USER_REQUIRED: 'Set SECURITY_INBOX_USER to the slug of a registered user before writing.',
   USER_HAS_PROJECTS: 'User still owns projects and cannot be removed.',
+  SECRET_DETECTED: 'The input looks like it contains a secret (password, token or key). '
+    + 'Nothing was saved; remove or redact it and retry. The inbox has no authentication.',
 };
 
 const uuidSchema = z.string().uuid();
@@ -133,6 +135,7 @@ const errorSchema = z.object({
       'USER_NOT_FOUND',
       'USER_REQUIRED',
       'USER_HAS_PROJECTS',
+      'SECRET_DETECTED',
       'INTERNAL_ERROR',
     ]),
     message: z.string(),
@@ -209,7 +212,12 @@ function handle<T>(schema: ZodType<T>, input: unknown, operation: (value: T) => 
     return result(operation(parsed.data));
   } catch (error) {
     const failure = error instanceof AppError
-      ? { code: error.code, message: publicMessages[error.code] }
+      ? {
+        code: error.code,
+        message: error.code === 'SECRET_DETECTED' && error.fieldErrors
+          ? `${publicMessages[error.code]} Fields: ${Object.keys(error.fieldErrors).join(', ')}.`
+          : publicMessages[error.code],
+      }
       : { code: 'INTERNAL_ERROR', message: 'Request failed.' };
     return result({ error: failure }, true);
   }

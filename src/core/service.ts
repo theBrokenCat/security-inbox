@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 
 import { AppError, validationError } from './errors.js';
+import { assertNoSecrets } from './secrets.js';
 import type {
   CreateProjectInput,
   DuplicateCandidate,
@@ -219,6 +220,15 @@ export class SecurityInboxService {
   registerFinding(input: RegisterFindingInput, actor: FindingActor | null = null): RegisterFindingResult {
     const value = parse(registerFindingInputSchema, input);
     const attributedActor = parse(findingActorSchema, actor);
+    assertNoSecrets({
+      title: value.title,
+      description: value.description,
+      filePath: value.filePath,
+      commitRef: value.commitRef,
+      evidence: value.evidence,
+      recommendation: value.recommendation,
+      origin: value.origin,
+    });
     const requestFingerprint = fingerprint(value);
     const result = this.repository.immediate(() => {
       this.requireProject(value.projectId);
@@ -297,6 +307,16 @@ export class SecurityInboxService {
   updateFinding(input: FindingIdentity & EditableFindingFields, actor: FindingActor | null = null): FindingDetail {
     const value = parse(updateFindingInputSchema, input);
     const attributedActor = parse(findingActorSchema, actor);
+    assertNoSecrets({
+      title: value.title,
+      description: value.description,
+      filePath: value.filePath,
+      commitRef: value.commitRef,
+      evidence: value.evidence,
+      recommendation: value.recommendation,
+      origin: value.origin,
+      note: value.note,
+    });
     return this.repository.immediate(() => {
       const original = this.requireFinding(value);
       const filePath = value.filePath === undefined ? original.filePath : value.filePath;
@@ -360,6 +380,7 @@ export class SecurityInboxService {
       throw validationError(parsed.error);
     }
     const value = parsed.data;
+    assertNoSecrets({ note: value.note });
     return this.repository.immediate(() => {
       const original = this.requireFinding(value);
       if (original.status === value.status) {
@@ -389,6 +410,7 @@ export class SecurityInboxService {
   addFindingNote(input: FindingIdentity & { note: string }, actor: FindingActor | null = null): FindingDetail {
     const value = parse(addFindingNoteInputSchema, input);
     const attributedActor = parse(findingActorSchema, actor);
+    assertNoSecrets({ note: value.note });
     return this.repository.immediate(() => {
       const original = this.requireFinding(value);
       const updatedAt = timestampAfter(original.updatedAt);

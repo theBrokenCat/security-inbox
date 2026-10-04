@@ -200,7 +200,8 @@ export type AppErrorCode =
   | 'DIRECTORY_UNAVAILABLE'
   | 'USER_NOT_FOUND'
   | 'USER_REQUIRED'
-  | 'USER_HAS_PROJECTS';
+  | 'USER_HAS_PROJECTS'
+  | 'SECRET_DETECTED';
 export type PublicAppError = {
   code: AppErrorCode;
   message: string;
