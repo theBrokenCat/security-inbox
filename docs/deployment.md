@@ -39,7 +39,7 @@ Desde `/root/Proyectos/security-inbox`:
 ```sh
 git pull --ff-only origin main
 docker compose build app
-docker compose run --rm -T app npm test
+docker compose run --rm -T app sh scripts/test-container.sh
 docker compose run --rm -T app npm run typecheck
 docker compose up -d web
 docker compose ps web

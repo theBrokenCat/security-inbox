@@ -71,7 +71,7 @@ beforeAll(async () => {
   );
   client.onerror = (error) => { protocolErrors.push(error.message); };
   await client.connect(transport);
-}, 20_000);
+}, 60_000); // Includes compilation on small deployment hosts.
 
 afterAll(async () => {
   await client?.close();

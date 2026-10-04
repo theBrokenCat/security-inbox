@@ -7,6 +7,8 @@
 - Demo: `npm run seed` y `npm run demo`.
 - Docker: solo `app` declara `build`; seed/tests usan `docker compose run --rm -T app ...`
   y MCP usa `docker compose run --rm -T mcp` sobre `node dist/src/mcp/server.js`.
+  Las pruebas usan `app sh scripts/test-container.sh` para compilar en `/tmp`
+  sin cambiar los permisos del código de la imagen.
 
 ## Arquitectura
 

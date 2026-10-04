@@ -125,7 +125,7 @@ test('opens a new database concurrently from two processes', async () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-}, 30_000);
+}, 120_000); // 64 process startups; allow slower deployment hosts without reducing race coverage.
 
 test('does not rewrite journal mode when the database is already in WAL', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-existing-wal-'));

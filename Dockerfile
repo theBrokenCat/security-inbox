@@ -16,6 +16,7 @@ COPY README.md ./README.md
 COPY AGENTS.md ./AGENTS.md
 COPY tasks/lessons.md ./tasks/lessons.md
 COPY scripts/verify-demo.sh ./scripts/verify-demo.sh
+COPY scripts/test-container.sh ./scripts/test-container.sh
 RUN npm run build
 
 RUN mkdir -p /app/data && chown node:node /app/data

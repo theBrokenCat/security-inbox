@@ -19,9 +19,8 @@ trap cleanup EXIT INT TERM
 
 docker compose build app
 
-# The MCP E2E test recompiles dist; keep that ephemeral test run separate from
-# the non-privileged runtime services and preserve root-owned application files.
-docker compose run --rm -T --user root app npm test
+# Recompile in a temporary workspace, preserving the runtime image permissions.
+docker compose run --rm -T app sh scripts/test-container.sh
 docker compose run --rm -T app npm run seed
 
 demo_before="$(docker compose run --rm -T app npm run demo)"
