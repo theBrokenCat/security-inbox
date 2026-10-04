@@ -38,6 +38,10 @@
   (una tarea `T-044`, una línea de backlog, una URL). `list_findings` filtra por él
   exacto. Solo entra en el fingerprint cuando tiene valor, para que los reintentos de
   hallazgos anteriores a v5 sigan siendo idempotentes.
+- `src/web/read-api.ts` añade a la web una API JSON de solo lectura (`/api/projects…`)
+  y `/projects/:id/export.md`. Reutiliza el control de Host y la validación del
+  servicio, no escribe y no pide CSRF; sus errores son JSON con los códigos públicos.
+  `scope=mine` lee la cookie: atribución, no permiso.
 - `projects.owner_id` es `NOT NULL` con clave foránea a `users`. La migración v3
   reconstruye la tabla; SQLite obliga a hacerlo con `foreign_keys = OFF` para que
   `legacy_alter_table` impida reescribir la clave foránea de `findings`.

@@ -48,6 +48,25 @@ hay que corregir. Los cierres siguen exigiendo una nota con la comprobación.
 La migración al esquema 4 es automática y conserva UUID, claves de reintento y
 el historial anterior; sus autores aparecen como desconocidos.
 
+## Lectura sin MCP
+
+Para quien no puede hablar MCP (una sesión que solo tiene navegador o `curl`, un
+script, un panel), la web expone una API JSON de solo lectura con el mismo control de
+Host que las páginas. No escribe nada, así que no necesita token CSRF; `scope=mine`
+lee la misma cookie de usuario que la web.
+
+| Ruta | Devuelve |
+|---|---|
+| `GET /api/projects?scope=all\|mine&repositoryReference=…` | `{ projects }` |
+| `GET /api/projects/:projectId` | `{ project }` con recuentos |
+| `GET /api/projects/:projectId/findings?status&severity&query&externalRef&limit&offset` | página con `nextOffset` |
+| `GET /api/projects/:projectId/findings/:findingId` | `{ finding }` con historial |
+| `GET /projects/:projectId/export.md?status&severity&query&externalRef` | todos los hallazgos en Markdown |
+
+Los errores llegan como `{ "error": { "code", "message" } }` con los mismos códigos
+que el MCP. La exportación recoge todas las páginas antes de escribir, útil para
+versionar una foto de la bandeja dentro del propio repositorio.
+
 ## Requisitos e instalación
 
 - Node.js 24 (la imagen usa `node:24-bookworm`).

@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import nunjucks from 'nunjucks';
 
 import { AppError, type SecurityInboxService } from '../core/service.js';
+import { registerReadApi } from './read-api.js';
 import {
   FINDING_STATUSES,
   SEVERITIES,
@@ -343,6 +344,8 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
 
   app.register(formbody);
 
+  registerReadApi(app, service, currentUser);
+
   app.addHook('onRequest', async (request, reply) => {
     reply
       .header('content-security-policy', csp)
@@ -645,7 +648,9 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
     },
   );
 
-  app.setNotFoundHandler(async (_request, reply) => reply
+  app.setNotFoundHandler(async (request, reply) => request.url.startsWith('/api/')
+    ? reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Unknown API route.' } })
+    : reply
     .code(404)
     .type('text/html; charset=utf-8')
     .send(render('error.njk', {
@@ -654,6 +659,15 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
     })));
 
   app.setErrorHandler(async (error, request, reply) => {
+    // The read API answers in JSON, with the same public codes the MCP adapter uses.
+    if (request.url.startsWith('/api/')) {
+      if (error instanceof AppError) {
+        return reply.code(publicErrors[error.code].status).send({
+          error: { code: error.code, message: publicErrors[error.code].message, ...(error.fieldErrors ? { fields: Object.keys(error.fieldErrors) } : {}) },
+        });
+      }
+      return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'Request failed.' } });
+    }
     if (error instanceof AppError) {
       const publicError = publicErrors[error.code];
       if (request.method === 'POST' && (

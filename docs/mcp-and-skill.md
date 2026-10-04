@@ -128,6 +128,13 @@ filesystem del servidor. Normaliza symlinks en el cliente y busca por
 `directoryPath`, nunca solo por nombre. Para carpetas montadas, el alta normal
 conserva las comprobaciones de acceso y canonicalización del servidor.
 
+## Lectura sin MCP
+
+Si un cliente no puede lanzar el MCP (por ejemplo, una sesión sin SSH), puede leer por
+HTTP desde la red de casa: `http://192.168.0.130:3300/api/projects`,
+`/api/projects/:id/findings` y `/projects/:id/export.md`. Es solo lectura; registrar y
+cambiar estados sigue siendo cosa del MCP o de la web. Rutas completas en el README.
+
 Para operar o actualizar el servidor, consulta [deployment.md](deployment.md).
 
 ## Instalación y activación de la skill
