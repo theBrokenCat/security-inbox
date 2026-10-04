@@ -1,0 +1,9 @@
+{% macro feedback(error) %}
+  {% if error %}<div class="form-feedback" role="alert"><strong>Revisa el formulario</strong><p>{{ error.message }}</p></div>{% endif %}
+{% endmacro %}
+{% macro invalid(errors, field, prefix = '') %}
+  {% if errors[field] %}aria-invalid="true" aria-describedby="{{ prefix }}{{ field }}-error"{% endif %}
+{% endmacro %}
+{% macro fieldError(errors, field, prefix = '') %}
+  {% if errors[field] %}<span class="field-error" id="{{ prefix }}{{ field }}-error">{{ errors[field] }}</span>{% endif %}
+{% endmacro %}

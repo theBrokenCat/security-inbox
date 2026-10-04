@@ -1,12 +1,17 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { basename, join, relative } from 'node:path';
 
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 import { AppError, SecurityInboxService } from '../../src/core/service.js';
 import { ProjectDirectoryManager } from '../../src/projects/directory-manager.js';
 import { testOwnerId } from '../support/owner.js';
+
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: vi.fn(actual.homedir) };
+});
 
 let directory: string;
 let root: string;
@@ -22,6 +27,7 @@ beforeEach(() => {
   mkdirSync(join(root, 'alpha', 'nested'), { recursive: true });
   mkdirSync(join(root, '.hidden'));
   mkdirSync(outside);
+  vi.mocked(homedir).mockReturnValue(root);
   symlinkSync(join(root, 'alpha'), join(root, 'inside-link'));
   symlinkSync(outside, join(root, 'outside-link'));
   service = new SecurityInboxService(join(directory, 'inbox.sqlite'));
@@ -70,13 +76,49 @@ test('lists visible directories in order and keeps paths relative to the configu
   });
 });
 
-test('rejects traversal, absolute paths, the root itself and symlinks outside the root', () => {
+test('rejects traversal and symlinks outside an explicitly configured root', () => {
   expectCode(() => manager.browse('../outside'), 'DIRECTORY_INVALID');
   expectCode(() => manager.browse(outside), 'DIRECTORY_INVALID');
   expectCode(() => manager.browse('\\etc'), 'DIRECTORY_INVALID');
   expectCode(() => manager.browse('\\definitely-not-present'), 'DIRECTORY_INVALID');
   expectCode(() => manager.browse('outside-link'), 'DIRECTORY_INVALID');
-  expectCode(() => manager.register({ ownerId: testOwnerId(service), relativePath: '' }), 'DIRECTORY_INVALID');
+  expectCode(() => manager.browse({ directoryPath: outside }), 'DIRECTORY_INVALID');
+});
+
+test('starts in the personal folder and can navigate up and select an unrelated directory', () => {
+  const native = new ProjectDirectoryManager(service);
+  const initial = native.browse();
+  expect(initial.displayPath).toBe(root);
+  expect(initial.parentRelativePath).toBe(relative('/', directory));
+  expect(native.browse(initial.parentRelativePath!).directories.map(({ name }) => name))
+    .toEqual(['outside', 'projects']);
+
+  const chosen = native.browse({ directoryPath: outside });
+  expect(chosen.displayPath).toBe(outside);
+  const registered = native.register({ ownerId: testOwnerId(service), directoryPath: outside });
+  const alias = native.register({ ownerId: testOwnerId(service), directoryPath: join(root, 'outside-link') });
+  expect(registered.project.directoryPath).toBe(outside);
+  expect(alias).toEqual({ project: registered.project, created: false });
+});
+
+test('maps absolute displayed paths and allows selecting the current root folder', () => {
+  expect(manager.browse({ directoryPath: '/srv/projects/alpha' }).relativePath).toBe('alpha');
+  const first = manager.register({ ownerId: testOwnerId(service), directoryPath: '/srv/projects' });
+  expect(first.project).toMatchObject({ name: 'projects', directoryPath: '/srv/projects' });
+  expect(manager.register({ ownerId: testOwnerId(service), relativePath: '' }))
+    .toEqual({ project: first.project, created: false });
+});
+
+test('rejects ambiguous, missing, malformed and unavailable directory selections', () => {
+  const native = new ProjectDirectoryManager(service);
+  const ownerId = testOwnerId(service);
+  writeFileSync(join(outside, 'file.txt'), 'Synthetic fixture');
+  expectCode(() => native.register({ ownerId }), 'VALIDATION_ERROR');
+  expectCode(() => native.register({ ownerId, relativePath: 'tmp', directoryPath: outside }), 'VALIDATION_ERROR');
+  expectCode(() => native.browse({ directoryPath: 'relative/folder' }), 'DIRECTORY_INVALID');
+  expectCode(() => native.browse({ directoryPath: `${outside}\0` }), 'DIRECTORY_INVALID');
+  expectCode(() => native.browse({ directoryPath: join(outside, 'missing') }), 'DIRECTORY_UNAVAILABLE');
+  expectCode(() => native.register({ ownerId, directoryPath: join(outside, 'file.txt') }), 'DIRECTORY_UNAVAILABLE');
 });
 
 test('derives the name and display path and returns the existing project on retry', () => {

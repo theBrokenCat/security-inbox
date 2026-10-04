@@ -5,7 +5,7 @@
   <section class="page-heading">
     <div>
       <h1>Proyectos</h1>
-      <p class="lede">Separa las sospechas por contexto y revisa primero lo que aún no tiene criterio humano.</p>
+      <p class="lede">Guarda los fallos de cada proyecto para que puedas retomarlos con tus agentes.</p>
     </div>
     <a class="button-link" href="/projects/new">{{ icon('plus') }}Añadir proyecto</a>
   </section>
@@ -63,12 +63,12 @@
 
           {% if project.bar.length %}
             <div class="severity-bar" role="img"
-                 aria-label="{{ project.openTotal }} hallazgos abiertos por gravedad">
+                 aria-label="{{ project.openTotal }} incidencias abiertas por gravedad">
               {% for segment in project.bar %}
                 <span class="severity-bar__segment severity-bar__segment--{{ segment.severity }} w-{{ segment.width }}"></span>
               {% endfor %}
             </div>
-            <ul class="severity-chips" aria-label="Hallazgos abiertos por gravedad">
+            <ul class="severity-chips" aria-label="Incidencias abiertas por gravedad">
               {% for severity in severityOptions %}
                 {% if project.openCounts[severity.value] %}
                   <li class="severity-chip severity-chip--{{ severity.value }}"
@@ -79,7 +79,7 @@
               {% endfor %}
             </ul>
           {% else %}
-            <p class="project-card__clear">{{ icon('check') }}Sin hallazgos abiertos</p>
+            <p class="project-card__clear">{{ icon('check') }}Sin incidencias abiertas</p>
           {% endif %}
 
           <footer class="project-card__footer">
@@ -109,7 +109,7 @@
           <p>Hay {{ allProjectCount }} registrados por otras personas. Añade una carpeta o mira todos.</p>
         {% else %}
           <h2>Todavía no hay proyectos</h2>
-          <p>Añade una carpeta para empezar a registrar hallazgos.</p>
+          <p>Añade una carpeta para empezar a apuntar incidencias.</p>
         {% endif %}
       </div>
       {% if scope == 'mine' and allProjectCount %}

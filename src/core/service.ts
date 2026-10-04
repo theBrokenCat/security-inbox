@@ -9,10 +9,12 @@ import type {
   EditableFindingFields,
   FieldChange,
   Finding,
+  FindingActor,
   FindingDetail,
   FindingIdentity,
   FindingStatus,
   FindingSummary,
+  FindingsPage,
   ListFindingsInput,
   ListProjectsInput,
   Project,
@@ -36,6 +38,7 @@ import {
   userSlugSchema,
   duplicateSearchInputSchema,
   findingIdentitySchema,
+  findingActorSchema,
   listFindingsInputSchema,
   registerFindingInputSchema,
   resolvedProjectDirectoryInputSchema,
@@ -213,8 +216,9 @@ export class SecurityInboxService {
     return this.repository.listProjects(parse(listProjectsInputSchema, input));
   }
 
-  registerFinding(input: RegisterFindingInput): RegisterFindingResult {
+  registerFinding(input: RegisterFindingInput, actor: FindingActor | null = null): RegisterFindingResult {
     const value = parse(registerFindingInputSchema, input);
+    const attributedActor = parse(findingActorSchema, actor);
     const requestFingerprint = fingerprint(value);
     const result = this.repository.immediate(() => {
       this.requireProject(value.projectId);
@@ -259,6 +263,7 @@ export class SecurityInboxService {
         toStatus: 'pending_review',
         note: null,
         changes: null,
+        actor: attributedActor,
         createdAt: now,
       });
       return { findingId: finding.id, created: true };
@@ -276,17 +281,22 @@ export class SecurityInboxService {
   }
 
   listFindings(input: ListFindingsInput): FindingSummary[] {
+    return this.listFindingsPage(input).findings;
+  }
+
+  listFindingsPage(input: ListFindingsInput): FindingsPage {
     const value = parse(listFindingsInputSchema, input);
     this.requireProject(value.projectId);
-    return this.repository.listFindings(value);
+    return this.repository.listFindingsPage(value);
   }
 
   getFinding(input: FindingIdentity): FindingDetail {
     return this.requireFinding(parse(findingIdentitySchema, input));
   }
 
-  updateFinding(input: FindingIdentity & EditableFindingFields): FindingDetail {
+  updateFinding(input: FindingIdentity & EditableFindingFields, actor: FindingActor | null = null): FindingDetail {
     const value = parse(updateFindingInputSchema, input);
+    const attributedActor = parse(findingActorSchema, actor);
     return this.repository.immediate(() => {
       const original = this.requireFinding(value);
       const filePath = value.filePath === undefined ? original.filePath : value.filePath;
@@ -329,13 +339,15 @@ export class SecurityInboxService {
         toStatus: null,
         note: value.note ?? null,
         changes,
+        actor: attributedActor,
         createdAt: updatedAt,
       });
       return this.requireFinding(value);
     });
   }
 
-  updateFindingStatus(input: FindingIdentity & { status: FindingStatus; note?: string }): FindingDetail {
+  updateFindingStatus(input: FindingIdentity & { status: FindingStatus; note?: string }, actor: FindingActor | null = null): FindingDetail {
+    const attributedActor = parse(findingActorSchema, actor);
     const parsed = updateFindingStatusInputSchema.safeParse(input);
     if (!parsed.success) {
       const emptyTerminalNote = (input.status === 'resolved' || input.status === 'dismissed')
@@ -367,14 +379,16 @@ export class SecurityInboxService {
         toStatus: value.status,
         note: value.note ?? null,
         changes: null,
+        actor: attributedActor,
         createdAt: updatedAt,
       });
       return this.requireFinding(value);
     });
   }
 
-  addFindingNote(input: FindingIdentity & { note: string }): FindingDetail {
+  addFindingNote(input: FindingIdentity & { note: string }, actor: FindingActor | null = null): FindingDetail {
     const value = parse(addFindingNoteInputSchema, input);
+    const attributedActor = parse(findingActorSchema, actor);
     return this.repository.immediate(() => {
       const original = this.requireFinding(value);
       const updatedAt = timestampAfter(original.updatedAt);
@@ -387,6 +401,7 @@ export class SecurityInboxService {
         toStatus: null,
         note: value.note,
         changes: null,
+        actor: attributedActor,
         createdAt: updatedAt,
       });
       return this.requireFinding(value);

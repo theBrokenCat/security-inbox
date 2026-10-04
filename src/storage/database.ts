@@ -8,7 +8,7 @@ import { userSlugSchema } from '../core/validation.js';
 
 export type SqliteDatabase = InstanceType<typeof BetterSqlite3>;
 
-const currentSchemaVersion = 3;
+const currentSchemaVersion = 4;
 const uuidIdCheck = `
   length(id) = 36
   AND id GLOB '????????-????-????-????-????????????'
@@ -170,6 +170,53 @@ const migrationV3ProjectsSwap = `
     ON projects(owner_id, updated_at DESC);
 `;
 
+// Rebuild findings with foreign_keys OFF and legacy_alter_table ON, just like projects in
+// v3, so finding_events keeps referencing findings and no append-only history is deleted.
+const migrationV4 = `
+  ALTER TABLE findings RENAME TO findings_legacy;
+  CREATE TABLE findings (
+    id TEXT PRIMARY KEY CHECK (${uuidIdCheck}),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    idempotency_key TEXT NOT NULL CHECK (length(trim(idempotency_key)) BETWEEN 1 AND 200),
+    request_fingerprint TEXT NOT NULL CHECK (length(request_fingerprint) = 64),
+    title TEXT NOT NULL CHECK (length(trim(title)) BETWEEN 1 AND 200),
+    normalized_title TEXT NOT NULL,
+    description TEXT NOT NULL CHECK (length(trim(description)) BETWEEN 1 AND 10000),
+    severity TEXT NOT NULL CHECK (severity IN ('critical', 'high', 'medium', 'low', 'informational', 'unclassified')),
+    status TEXT NOT NULL CHECK (status IN ('pending_review', 'confirmed', 'in_progress', 'resolved', 'dismissed')),
+    file_path TEXT CHECK (file_path IS NULL OR length(trim(file_path)) BETWEEN 1 AND 1000),
+    line_number INTEGER CHECK (line_number IS NULL OR line_number BETWEEN 1 AND 10000000),
+    commit_ref TEXT CHECK (commit_ref IS NULL OR length(trim(commit_ref)) BETWEEN 1 AND 200),
+    evidence TEXT NOT NULL CHECK (length(trim(evidence)) <= 10000),
+    recommendation TEXT CHECK (recommendation IS NULL OR length(trim(recommendation)) BETWEEN 1 AND 5000),
+    origin TEXT NOT NULL CHECK (length(trim(origin)) BETWEEN 1 AND 200),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL CHECK (updated_at >= created_at),
+    CHECK (line_number IS NULL OR file_path IS NOT NULL),
+    UNIQUE (project_id, idempotency_key)
+  ) STRICT;
+  INSERT INTO findings (
+    id, project_id, idempotency_key, request_fingerprint, title, normalized_title,
+    description, severity, status, file_path, line_number, commit_ref, evidence,
+    recommendation, origin, created_at, updated_at
+  ) SELECT
+    id, project_id, idempotency_key, request_fingerprint, title, normalized_title,
+    description, severity, status, file_path, line_number, commit_ref, evidence,
+    recommendation, origin, created_at, updated_at
+  FROM findings_legacy;
+  DROP TABLE findings_legacy;
+  CREATE INDEX idx_findings_project_updated ON findings(project_id, updated_at DESC);
+  CREATE INDEX idx_findings_project_status_updated ON findings(project_id, status, updated_at DESC);
+  CREATE INDEX idx_findings_project_severity_updated ON findings(project_id, severity, updated_at DESC);
+  ALTER TABLE finding_events ADD COLUMN actor_slug TEXT CHECK (
+    actor_slug IS NULL OR (length(actor_slug) BETWEEN 1 AND 40 AND actor_slug NOT GLOB '*[^a-z0-9-]*')
+  );
+  ALTER TABLE finding_events ADD COLUMN actor_name TEXT CHECK (
+    (actor_slug IS NULL AND actor_name IS NULL)
+    OR (actor_slug IS NOT NULL AND actor_name IS NOT NULL AND length(trim(actor_name)) BETWEEN 1 AND 80)
+  );
+`;
+
 const walRetryDelays = [10, 25, 50, 100, 200];
 const walWaitSignal = new Int32Array(new SharedArrayBuffer(4));
 
@@ -289,6 +336,16 @@ export function openDatabase(
           }
           database.pragma('user_version = 3');
           currentVersion = 3;
+        }
+        if (currentVersion === 3) {
+          database.pragma('legacy_alter_table = ON');
+          try {
+            database.exec(migrationV4);
+          } finally {
+            database.pragma('legacy_alter_table = OFF');
+          }
+          database.pragma('user_version = 4');
+          currentVersion = 4;
         }
         if (currentVersion !== currentSchemaVersion) {
           throw new Error(`Unsupported database schema version ${currentVersion}; expected ${currentSchemaVersion}`);

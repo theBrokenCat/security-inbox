@@ -7,6 +7,7 @@ import { afterEach, expect, test } from 'vitest';
 
 import { SecurityInboxService } from '../../src/core/service.js';
 import { openDatabase } from '../../src/storage/database.js';
+import { downgradeFindingsToV3 } from '../support/legacy-v3.js';
 
 const directories: string[] = [];
 
@@ -22,6 +23,7 @@ afterEach(() => {
 
 // Rebuilds a version 2 database: projects without owner_id, no users table.
 function downgradeToV2(path: string): void {
+  downgradeFindingsToV3(path);
   const legacy = new BetterSqlite3(path);
   legacy.pragma('foreign_keys = OFF');
   legacy.exec(`
@@ -155,6 +157,62 @@ test('migrates an empty database without needing a default user', () => {
   service.close();
 
   const database = openDatabase(path);
-  expect(database.pragma('user_version', { simple: true })).toBe(3);
+  expect(database.pragma('user_version', { simple: true })).toBe(4);
   database.close();
+});
+
+test('upgrades v3 without changing existing findings, retries or append-only history', () => {
+  const path = temporaryDatabase();
+  const { projectId, findingId } = seedOneProjectWithFinding(path);
+  const previous = new SecurityInboxService(path);
+  previous.updateFindingStatus({ projectId, findingId, status: 'confirmed', note: 'Reviewed before upgrade' });
+  previous.addFindingNote({ projectId, findingId, note: 'Legacy context' });
+  const original = previous.getFinding({ projectId, findingId });
+  previous.close();
+  downgradeFindingsToV3(path);
+  const legacy = new BetterSqlite3(path);
+  expect(() => legacy.prepare('UPDATE findings SET evidence = ? WHERE id = ?').run('', findingId)).toThrow();
+  expect(() => legacy.prepare('UPDATE findings SET severity = ? WHERE id = ?').run('unclassified', findingId)).toThrow();
+  legacy.close();
+
+  const service = new SecurityInboxService(path);
+  try {
+    expect(service.getFinding({ projectId, findingId })).toEqual(original);
+    expect(original.history.every(event => event.actor === null)).toBe(true);
+    const retry = service.registerFinding({ projectId, idempotencyKey: 'migration-fixture', title: 'Legacy finding', description: 'Recorded before schema version 3.', severity: 'high', evidence: 'Synthetic evidence.', origin: 'migration-test' });
+    expect(retry.created).toBe(false);
+    expect(retry.finding.id).toBe(findingId);
+    const fresh = service.registerFinding({ projectId, idempotencyKey: 'after-upgrade', title: 'Functional issue', description: 'A brief observation' }, { slug: 'new-agent', name: 'New agent' });
+    expect(fresh.finding).toMatchObject({ severity: 'unclassified', evidence: '' });
+    expect(fresh.finding.history[0]!.actor?.slug).toBe('new-agent');
+    const database = openDatabase(path);
+    try {
+      expect(database.pragma('foreign_key_check')).toEqual([]);
+      expect(database.pragma('integrity_check', { simple: true })).toBe('ok');
+      expect(() => database.prepare('DELETE FROM finding_events WHERE finding_id = ?').run(findingId)).toThrow(/append-only/);
+      expect(() => database.prepare('UPDATE finding_events SET note = ? WHERE finding_id = ?').run('Changed', findingId)).toThrow(/append-only/);
+    } finally { database.close(); }
+  } finally { service.close(); }
+  const reopened = new SecurityInboxService(path);
+  expect(reopened.getFinding({ projectId, findingId })).toEqual(original);
+  reopened.close();
+});
+
+test('rolls back v4 when integrity validation fails, keeping the v3 schema and history', () => {
+  const path = temporaryDatabase();
+  const { projectId, findingId } = seedOneProjectWithFinding(path);
+  downgradeFindingsToV3(path);
+  const legacy = new BetterSqlite3(path);
+  legacy.pragma('foreign_keys = OFF');
+  legacy.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
+  legacy.close();
+  expect(() => openDatabase(path)).toThrow(/dangling foreign keys/);
+  const database = new BetterSqlite3(path);
+  try {
+    expect(database.pragma('user_version', { simple: true })).toBe(3);
+    expect((database.prepare('PRAGMA table_info(finding_events)').all() as Array<{ name: string }>).map(c => c.name)).not.toContain('actor_slug');
+    expect(database.prepare('SELECT id FROM findings').get()).toEqual({ id: findingId });
+    expect(database.prepare('SELECT count(*) AS total FROM finding_events').get()).toEqual({ total: 1 });
+    expect(database.prepare("SELECT name FROM sqlite_schema WHERE name = 'findings_legacy'").get()).toBeUndefined();
+  } finally { database.close(); }
 });

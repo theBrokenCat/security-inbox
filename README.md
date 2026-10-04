@@ -1,9 +1,38 @@
 # Security Inbox
 
-Aplicación local para registrar y revisar sospechas de seguridad por proyecto.
-Registrar una sospecha no la confirma ni corrige una vulnerabilidad. Web y MCP
+Bandeja local para apuntar fallos de cualquier tipo por proyecto: funcionales, de
+interfaz, calidad o seguridad. Los agentes pueden guardar lo que encuentran
+mientras hacen otra tarea y retomarlo cuando se les pida. Una anotación queda
+sin revisar; guardarla no inicia una investigación ni una corrección. Web y MCP
 usan el mismo servicio y la misma base SQLite. Cada proyecto pertenece a un
 usuario, que sirve para atribuir trabajo y no para restringir el acceso.
+
+## Apuntar ahora y retomar después
+
+Solo hacen falta **título y contexto**. Por ejemplo: «Al guardar el perfil con el
+teclado, el foco vuelve al inicio; observado en `src/profile.ts:12`». Archivo,
+línea y commit se añaden cuando se conocen. Gravedad, evidencia, origen y
+recomendación son opcionales: la gravedad empieza en **Sin clasificar**, sin
+asignar un riesgo arbitrario. El agente registra la observación y continúa su
+tarea actual; la investigación y la corrección dependen de una petición posterior.
+
+Web y MCP permiten recuperar toda la bandeja por páginas. `list_findings`
+conserva el array `findings` y devuelve `total`, `limit`, `offset` y `nextOffset`;
+pasa este último como `offset`, manteniendo los filtros, hasta recibir `null`.
+Recoge las páginas antes de modificar incidencias, porque una edición puede
+cambiar el orden. La búsqueda incluye texto, archivo y commit.
+
+El historial registra el usuario de cada creación, edición, cambio de estado o
+nota. La web lo obtiene de `si_user` y MCP de `SECURITY_INBOX_USER`. El autor se
+conserva aunque se elimine después el usuario. `origin` es un dato independiente
+para indicar, por ejemplo, qué agente detectó el fallo; si se omite, los
+adaptadores usan `web` o `mcp`. Una identidad sin configurar aparece sin autor;
+esto sigue siendo atribución, no autorización.
+
+Al validar un formulario, la web conserva el borrador y señala los campos que
+hay que corregir. Los cierres siguen exigiendo una nota con la comprobación.
+La migración al esquema 4 es automática y conserva UUID, claves de reintento y
+el historial anterior; sus autores aparecen como desconocidos.
 
 ## Requisitos e instalación
 
@@ -21,9 +50,12 @@ npm ci
 La base por defecto es `data/security-inbox.sqlite`. Se puede cambiar con
 `SECURITY_INBOX_DB`.
 
-La web registra proyectos seleccionando carpetas. En ejecución nativa,
-`SECURITY_INBOX_PROJECTS_ROOT` limita el árbol navegable y por defecto es el
-directorio desde el que se lanza la aplicación.
+La web registra proyectos seleccionando carpetas. En ejecución nativa puedes
+navegar desde tu carpeta personal, subir de nivel o introducir una ruta completa
+y seleccionar cualquier carpeta a la que tenga acceso el proceso. No necesitas
+colocar los proyectos bajo `security-inbox` ni bajo una carpeta de proyectos fija.
+Si se configura expresamente `SECURITY_INBOX_PROJECTS_ROOT`, limita el árbol
+accesible; Docker mantiene ese límite sobre los directorios montados.
 
 ## Usuarios
 
@@ -33,8 +65,8 @@ usuario es un clic y nadie verifica nada. Security Inbox confía en la red por l
 que llegas — está pensado para un homelab detrás de VPN, sin exposición externa.
 Quien pueda abrir la web puede ponerse cualquier nombre.
 
-Lo que sí aporta: separa tus proyectos de los del resto, firma lo que registra
-cada agente y evita que dos personas se pisen el listado.
+Lo que sí aporta: separa tus proyectos de los del resto, atribuye los cambios de
+cada agente configurado y evita que dos personas se pisen el listado.
 
 - La primera visita muestra **¿Quién eres?** y permite crear el primer usuario.
 - El identificador (`slug`) admite minúsculas, números y guiones.
@@ -71,7 +103,7 @@ npm run web
 `npm run web` escucha en loopback en ejecución nativa. El seed no inventa
 personas: asigna sus proyectos a `SECURITY_INBOX_USER`, en su defecto al primer
 usuario registrado, y solo crea el usuario `demo` si la base está vacía. Cubre
-las cinco gravedades y cinco estados, conserva los UUID y no duplica eventos al
+las cinco gravedades clasificadas y los cinco estados, conserva los UUID y no duplica eventos al
 repetirse.
 `npm run demo` añade un hallazgo sintético de recorrido y comprueba que el retry
 con `demo-route-fixed-key` devuelve el mismo UUID.
@@ -133,9 +165,11 @@ de contenedores y red, pero conserva `./data`.
    automáticamente y el proyecto queda a tu nombre.
 2. Un agente comienza con `list_projects`, que por defecto solo devuelve los
    proyectos de `SECURITY_INBOX_USER`. Si falta la carpeta, usa
-   `browse_project_directories` y `register_project`; después conserva el UUID.
+   `browse_project_directories` y `register_project` con su `directoryPath`
+   completo o el `relativePath` devuelto; después conserva el UUID.
 3. Lista hallazgos, comprueba candidatos parecidos y
-   registra uno con una clave de idempotencia estable.
+   registra título y contexto con una clave de idempotencia estable. Los detalles
+   pueden completarse después.
 4. Repite la misma petición: debe devolver el mismo UUID y no crear otra fila.
 5. Usa `update_finding`, cambia el estado con una nota cuando corresponda y
    consulta el detalle para comprobar el historial append-only.
@@ -155,10 +189,10 @@ El destino operativo previsto es `arturo-dev:/root/Proyectos/security-inbox`.
 
 - No incluye autenticación ni despliegue público. El usuario es atribución, no
   control de acceso: la cookie es editable y nadie comprueba identidades.
-- Los hallazgos no tienen dueño propio; cuelgan del proyecto y el campo `origin`
-  registra quién los reportó.
-- Las entradas son sospechas, no confirmaciones automáticas, detección externa
-  ni remediación.
+- Las incidencias no tienen dueño propio; cuelgan del proyecto. El historial
+  atribuye cada cambio al usuario configurado y `origin` permite describir la fuente.
+- Las entradas son observaciones pendientes de revisar. La plataforma no inicia
+  detección externa ni correcciones por sí sola.
 - MCP se sirve por stdio y requiere un cliente configurado; `-T` es necesario
   en Compose para mantener stdout reservado al protocolo.
 - Solo se documenta Node 24, Docker Compose v2 y el flujo remoto indicado; no se

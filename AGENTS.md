@@ -17,6 +17,14 @@
 - La identidad del usuario se resuelve **en el adaptador**, nunca en `src/core`:
   la web lee la cookie `si_user` y el MCP lee `SECURITY_INBOX_USER`. El servicio
   solo acepta un `ownerId` ya resuelto.
+- Los cambios de incidencias aceptan un `actor` ya resuelto por el adaptador.
+  El historial guarda una copia de slug/nombre, sin FK a usuarios, para mantener
+  la atribución al eliminar un usuario. El origen libre no sustituye al autor.
+- Una incidencia necesita título y contexto; gravedad empieza en `unclassified`
+  y evidencia es opcional. El esquema v4 reconstruye `findings` con foreign keys
+  desactivadas y `legacy_alter_table`, conservando UUID, fingerprints e historial.
+- Web y MCP usan `listFindingsPage`; MCP devuelve `nextOffset` y la web conserva
+  filtros al paginar. Recoger las páginas antes de cambiar la actividad.
 - `projects.owner_id` es `NOT NULL` con clave foránea a `users`. La migración v3
   reconstruye la tabla; SQLite obliga a hacerlo con `foreign_keys = OFF` para que
   `legacy_alter_table` impida reescribir la clave foránea de `findings`.
@@ -29,7 +37,11 @@
   `SECURITY_INBOX_CONTAINER=true`, la web escucha dentro en `0.0.0.0:3300`.
 - En Linux, `./data` y sus archivos deben ser escribibles por UID/GID 1000; usa
   `chown -R 1000:1000 data` si un SQLite heredado pertenece a root.
-- `SECURITY_INBOX_PROJECTS_ROOT` limita el árbol accesible;
+- En ejecución nativa, sin raíz explícita, el selector empieza en la carpeta
+  personal y permite subir o indicar cualquier `directoryPath` absoluto accesible.
+  `directory-manager` resuelve también rutas completas y conserva la identidad
+  canónica de los symlinks. `relativePath` sigue siendo compatible.
+- `SECURITY_INBOX_PROJECTS_ROOT`, si se configura, limita el árbol accesible;
   `SECURITY_INBOX_PROJECTS_DISPLAY_ROOT` es la ruta persistida/visible. Compose
   monta `${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}` read-only.
 

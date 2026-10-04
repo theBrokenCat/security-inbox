@@ -1,4 +1,4 @@
-export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'informational'] as const;
+export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'informational', 'unclassified'] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
 export const FINDING_STATUSES = [
@@ -84,8 +84,11 @@ export type DirectoryListing = {
   parentRelativePath: string | null;
   directories: DirectoryEntry[];
 };
-export type RegisterProjectDirectoryInput = {
-  relativePath: string;
+export type DirectorySelection = {
+  relativePath?: string;
+  directoryPath?: string;
+};
+export type RegisterProjectDirectoryInput = DirectorySelection & {
   description?: string | null;
   ownerId: string;
 };
@@ -126,8 +129,12 @@ export type FindingEvent = {
   toStatus: FindingStatus | null;
   note: string | null;
   changes: Record<string, FieldChange> | null;
+  actor: FindingActor | null;
   createdAt: string;
 };
+// A snapshot preserves attribution even if the user is later removed. Identity is resolved
+// by the adapter; the service does not read cookies or process configuration.
+export type FindingActor = { slug: string; name: string };
 export type FindingDetail = Finding & { history: FindingEvent[] };
 export type FindingIdentity = { projectId: string; findingId: string };
 
@@ -136,13 +143,13 @@ export type RegisterFindingInput = {
   idempotencyKey: string;
   title: string;
   description: string;
-  severity: Severity;
+  severity?: Severity;
   filePath?: string | null;
   lineNumber?: number | null;
   commitRef?: string | null;
-  evidence: string;
+  evidence?: string;
   recommendation?: string | null;
-  origin: string;
+  origin?: string;
 };
 export type EditableFindingFields = {
   title?: string;
@@ -162,6 +169,14 @@ export type ListFindingsInput = {
   status?: FindingStatus;
   query?: string;
   limit?: number;
+  offset?: number;
+};
+export type FindingsPage = {
+  findings: FindingSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  nextOffset: number | null;
 };
 export type DuplicateCandidate = Pick<
   Finding,

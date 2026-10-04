@@ -112,3 +112,11 @@ describe('validation', () => {
     expect(addFindingNoteInputSchema.parse({ projectId, findingId, note: ' detail ' }).note).toBe('detail');
   });
 });
+
+test('allows brief observations without evidence or severity while validating pagination', () => {
+  expect(registerFindingInputSchema.parse({ projectId, idempotencyKey: 'quick', title: 'Functional issue', description: 'Observed context' })).toMatchObject({ severity: 'unclassified', evidence: '', origin: 'unknown' });
+  for (const offset of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    expect(listFindingsInputSchema.safeParse({ projectId, offset }).success).toBe(false);
+  }
+  expect(listFindingsInputSchema.parse({ projectId, offset: 200 }).offset).toBe(200);
+});

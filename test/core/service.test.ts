@@ -642,3 +642,60 @@ describe('ordering, transfer and user removal', () => {
     expectCode(() => service.deleteUser('nadie'), 'USER_NOT_FOUND');
   });
 });
+
+describe('quick capture and later review', () => {
+  test('stores a functional issue with only a title and context and keeps retries stable', () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'UI', description: 'Synthetic project' });
+    const input = { projectId: project.id, idempotencyKey: 'quick-capture', title: 'El botón guardar pierde el foco', description: 'Al guardar desde el teclado el foco vuelve al inicio.', filePath: 'src/profile.ts', lineNumber: 12 };
+    const actor = { slug: 'reporter', name: 'Reporter' };
+    const created = service.registerFinding(input, actor);
+    expect(created.finding).toMatchObject({ severity: 'unclassified', evidence: '', origin: 'unknown', status: 'pending_review', filePath: 'src/profile.ts', lineNumber: 12 });
+    expect(created.finding.history[0]!.actor).toEqual(actor);
+    expect(service.registerFinding({ ...input, severity: 'unclassified', evidence: '', origin: 'unknown' }, { slug: 'other-agent', name: 'Other agent' })).toMatchObject({ created: false, finding: { id: created.finding.id, history: created.finding.history } });
+    expect(service.listProjects()[0]).toMatchObject({ openTotal: 1, worstOpenSeverity: 'unclassified', openCounts: { unclassified: 1 } });
+    const reviewed = service.updateFinding({ projectId: project.id, findingId: created.finding.id, severity: 'low', evidence: 'Reproduced with the keyboard' }, actor);
+    expect(reviewed.severity).toBe('low');
+    expect(service.listProjects()[0]!.openCounts.unclassified).toBe(0);
+  });
+
+  test('retrieves every pending issue across pages and searches known locations', () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Backlog', description: 'Synthetic project' });
+    const other = service.createProject({ ownerId: testOwnerId(service), name: 'Other', description: 'Another project' });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-04T12:00:00.000Z'));
+    const ids = new Set<string>();
+    for (let i = 0; i < 205; i++) {
+      ids.add(service.registerFinding({ projectId: project.id, idempotencyKey: `page-${i}`, title: `Issue ${i}`, description: 'Pending context', filePath: i === 0 ? 'src/unique-location.ts' : null, commitRef: i === 0 ? 'unique-commit' : null }).finding.id);
+    }
+    vi.restoreAllMocks();
+    service.registerFinding({ projectId: other.id, idempotencyKey: 'other', title: 'Other issue', description: 'Outside this project' });
+    const first = service.listFindingsPage({ projectId: project.id, status: 'pending_review' });
+    const second = service.listFindingsPage({ projectId: project.id, status: 'pending_review', offset: first.nextOffset! });
+    const third = service.listFindingsPage({ projectId: project.id, status: 'pending_review', offset: second.nextOffset! });
+    expect(first).toMatchObject({ total: 205, offset: 0, limit: 100, nextOffset: 100 });
+    expect(second).toMatchObject({ total: 205, offset: 100, nextOffset: 200 });
+    expect(third).toMatchObject({ total: 205, offset: 200, nextOffset: null });
+    expect(third.findings).toHaveLength(5);
+    expect(new Set([...first.findings, ...second.findings, ...third.findings].map(f => f.id))).toEqual(ids);
+    expect(service.listFindingsPage({ projectId: project.id, query: 'src/unique-location.ts' }).total).toBe(1);
+    expect(service.listFindingsPage({ projectId: project.id, query: 'unique-commit' }).total).toBe(1);
+    expect(service.listFindingsPage({ projectId: project.id, offset: 205 })).toMatchObject({ findings: [], total: 205, nextOffset: null });
+    expectCode(() => service.listFindingsPage({ projectId: project.id, offset: -1 }), 'VALIDATION_ERROR');
+  });
+
+  test('keeps the author of each change after reopening and removing their user', () => {
+    const ownerId = testOwnerId(service);
+    const reporter = service.registerUser({ slug: 'reporter', name: 'Original reporter' }).user;
+    const actor = { slug: reporter.slug, name: reporter.name };
+    const reviewer = { slug: 'reviewer', name: 'Review agent' };
+    const project = service.createProject({ ownerId, name: 'History', description: 'Synthetic project' });
+    const finding = service.registerFinding({ projectId: project.id, idempotencyKey: 'attribution', title: 'Lost focus', description: 'Observed during another task' }, actor).finding;
+    const identity = { projectId: project.id, findingId: finding.id };
+    service.updateFinding({ ...identity, evidence: 'Reproduced', severity: 'low' }, reviewer);
+    service.updateFindingStatus({ ...identity, status: 'in_progress' }, reviewer);
+    service.addFindingNote({ ...identity, note: 'Keyboard flow checked' }, actor);
+    service.deleteUser(reporter.slug);
+    service.close();
+    service = new SecurityInboxService(databasePath);
+    expect(service.getFinding(identity).history.map(event => event.actor)).toEqual([actor, reviewer, reviewer, actor]);
+  });
+});

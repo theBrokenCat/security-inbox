@@ -10,7 +10,7 @@ import {
   browseProjectDirectoriesInputSchema,
   findingIdentitySchema,
   listFindingsInputSchema,
-  registerProjectDirectoryInputSchema,
+  registerProjectDirectorySelectionSchema,
   registerFindingInputSchema,
   userSlugSchema,
   updateFindingInputSchema,
@@ -24,7 +24,7 @@ const publicMessages: Record<AppErrorCode, string> = {
   IDEMPOTENCY_CONFLICT: 'Idempotency key conflict.',
   TERMINAL_NOTE_REQUIRED: 'A note is required for a terminal status.',
   NO_STATUS_CHANGE: 'Finding status is unchanged.',
-  DIRECTORY_INVALID: 'Directory is outside the configured project root.',
+  DIRECTORY_INVALID: 'Invalid directory path or directory outside an explicitly configured root.',
   DIRECTORY_UNAVAILABLE: 'Directory is unavailable.',
   USER_NOT_FOUND: 'SECURITY_INBOX_USER does not match a registered user.',
   USER_REQUIRED: 'Set SECURITY_INBOX_USER to the slug of a registered user before writing.',
@@ -63,6 +63,7 @@ const projectSummarySchema = projectSchema.extend({
     medium: countSchema,
     low: countSchema,
     informational: countSchema,
+    unclassified: countSchema,
   }),
   openTotal: countSchema,
   pendingReviewCount: countSchema,
@@ -92,6 +93,7 @@ const eventSchema = z.object({
   toStatus: statusSchema.nullable(),
   note: z.string().nullable(),
   changes: z.record(z.string(), z.object({ from: scalarSchema, to: scalarSchema })).nullable(),
+  actor: z.object({ slug: z.string(), name: z.string() }).nullable(),
   createdAt: timestampSchema,
 });
 const findingDetailSchema = findingSchema.extend({ history: z.array(eventSchema) });
@@ -149,7 +151,13 @@ const registerFindingOutputSchema = z.union([
   errorSchema,
 ]);
 const listFindingsOutputSchema = z.union([
-  z.object({ findings: z.array(findingSummarySchema) }),
+  z.object({
+    findings: z.array(findingSummarySchema),
+    total: countSchema,
+    limit: z.number().int().min(1).max(100),
+    offset: countSchema,
+    nextOffset: countSchema.nullable(),
+  }),
   errorSchema,
 ]);
 const findingOutputSchema = z.union([z.object({ finding: findingDetailSchema }), errorSchema]);
@@ -226,7 +234,16 @@ export function createSecurityInboxMcpServer(
   // web accepts; an unusable value is treated as unset rather than silently missing its user.
   const configuredSlug = userSlugSchema.safeParse(options.userSlug).data;
   // The owner is taken from the configured user, never from tool input.
-  const registerProjectToolSchema = registerProjectDirectoryInputSchema.omit({ ownerId: true });
+  const registerProjectToolSchema = registerProjectDirectorySelectionSchema;
+  const registerFindingToolSchema = registerFindingInputSchema.safeExtend({
+    origin: registerFindingInputSchema.shape.origin.default('mcp'),
+  });
+
+  const currentActor = () => {
+    if (!configuredSlug) return null;
+    const user = service.requireUserBySlug(configuredSlug);
+    return { slug: user.slug, name: user.name };
+  };
 
   // Resolved per call rather than at startup, so a user registered from the web after this
   // process began is picked up without a restart.
@@ -256,17 +273,18 @@ export function createSecurityInboxMcpServer(
   }, async (input) => handle(emptyInputSchema, input, () => ({ users: service.listUsers() })));
 
   server.registerTool('browse_project_directories', {
-    description: 'Browse directories allowed by this Security Inbox instance before registering a project.',
+    description: 'Choose a project folder using its absolute directoryPath, or navigate using a returned relativePath. '
+      + 'Without a path, start in the personal folder. An explicitly configured root limits mounted deployments.',
     inputSchema: advertisedInput(browseProjectDirectoriesInputSchema),
     outputSchema: browseDirectoriesOutputSchema,
   }, async (input) => handle(browseProjectDirectoriesInputSchema, input, (value) => ({
-    listing: directories.browse(value.relativePath),
+    listing: directories.browse(value),
   })));
 
   server.registerTool('register_project', {
     description:
       'Register a selected directory as a project owned by the configured user; '
-      + 'its name and stored path are derived automatically.',
+      + 'pass its absolute directoryPath or a returned relativePath. Its name and stored path are derived automatically.',
     inputSchema: advertisedInput(registerProjectToolSchema),
     outputSchema: registerProjectOutputSchema,
   }, async (input) => handle(registerProjectToolSchema, input, (value) => directories.register({
@@ -275,16 +293,18 @@ export function createSecurityInboxMcpServer(
   })));
 
   server.registerTool('register_finding', {
-    description: 'Register an unconfirmed security finding after checking for existing findings.',
-    inputSchema: advertisedInput(registerFindingInputSchema),
+    description: 'Save any incidental project issue with a title and short context, then continue the current task. '
+      + 'Severity and evidence can be added during later review. Check for existing findings first.',
+    inputSchema: advertisedInput(registerFindingToolSchema),
     outputSchema: registerFindingOutputSchema,
-  }, async (input) => handle(registerFindingInputSchema, input, (value) => service.registerFinding(value)));
+  }, async (input) => handle(registerFindingToolSchema, input, (value) => service.registerFinding(value, currentActor())));
 
   server.registerTool('list_findings', {
-    description: 'List or search findings within one Security Inbox project.',
+    description: 'List or search project issues, including file paths and commits. Follow nextOffset '
+      + 'until it is null to retrieve all pages; collect the pending list before changing its findings.',
     inputSchema: advertisedInput(listFindingsInputSchema),
     outputSchema: listFindingsOutputSchema,
-  }, async (input) => handle(listFindingsInputSchema, input, (value) => ({ findings: service.listFindings(value) })));
+  }, async (input) => handle(listFindingsInputSchema, input, (value) => ({ ...service.listFindingsPage(value) })));
 
   server.registerTool('get_finding', {
     description: 'Get one finding and its chronological history within its project.',
@@ -296,19 +316,19 @@ export function createSecurityInboxMcpServer(
     description: 'Edit mutable finding details within the project and record an optional edit note.',
     inputSchema: advertisedInput(updateFindingInputSchema),
     outputSchema: findingOutputSchema,
-  }, async (input) => handle(updateFindingInputSchema, input, (value) => ({ finding: service.updateFinding(value) })));
+  }, async (input) => handle(updateFindingInputSchema, input, (value) => ({ finding: service.updateFinding(value, currentActor()) })));
 
   server.registerTool('update_finding_status', {
     description: 'Change a finding status; resolving or dismissing requires a verification note.',
     inputSchema: advertisedInput(updateFindingStatusInputSchema),
     outputSchema: findingOutputSchema,
-  }, async (input) => handle(updateFindingStatusInputSchema, input, (value) => ({ finding: service.updateFindingStatus(value) })));
+  }, async (input) => handle(updateFindingStatusInputSchema, input, (value) => ({ finding: service.updateFindingStatus(value, currentActor()) })));
 
   server.registerTool('add_finding_note', {
     description: 'Append a note to a finding without changing its status.',
     inputSchema: advertisedInput(addFindingNoteInputSchema),
     outputSchema: findingOutputSchema,
-  }, async (input) => handle(addFindingNoteInputSchema, input, (value) => ({ finding: service.addFindingNote(value) })));
+  }, async (input) => handle(addFindingNoteInputSchema, input, (value) => ({ finding: service.addFindingNote(value, currentActor()) })));
 
   return server;
 }

@@ -16,6 +16,11 @@ export const userColorSchema = z.enum(USER_COLORS);
 export const userSlugSchema = z.string().trim().toLowerCase().min(1).max(40)
   .regex(/^[a-z0-9-]+$/, 'Only lowercase letters, digits and hyphens are allowed');
 
+export const findingActorSchema = z.object({
+  slug: userSlugSchema,
+  name: requiredText(80),
+}).strict().nullable();
+
 export const createUserInputSchema = z.object({
   slug: userSlugSchema,
   name: requiredText(80).optional(),
@@ -56,26 +61,37 @@ export const resolvedProjectDirectoryInputSchema = z.object({
 
 export const browseProjectDirectoriesInputSchema = z.object({
   relativePath: z.string().trim().max(4_096).optional(),
-}).strict();
+  directoryPath: requiredText(4_096).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.relativePath !== undefined && value.directoryPath !== undefined) {
+    context.addIssue({ code: 'custom', path: ['directoryPath'], message: 'Choose one directory path' });
+  }
+});
 
-export const registerProjectDirectoryInputSchema = z.object({
-  relativePath: z.string().trim().max(4_096),
+export const registerProjectDirectorySelectionSchema = browseProjectDirectoriesInputSchema.safeExtend({
   description: optionalText(2_000),
+}).superRefine((value, context) => {
+  if (value.relativePath === undefined && value.directoryPath === undefined) {
+    context.addIssue({ code: 'custom', path: ['directoryPath'], message: 'Select a directory' });
+  }
+});
+
+export const registerProjectDirectoryInputSchema = registerProjectDirectorySelectionSchema.safeExtend({
   ownerId: uuid,
-}).strict();
+});
 
 export const registerFindingInputSchema = z.object({
   projectId: uuid,
   idempotencyKey: requiredText(200),
   title: requiredText(200),
   description: requiredText(10_000),
-  severity: severitySchema,
+  severity: severitySchema.default('unclassified'),
   filePath: optionalText(1_000),
   lineNumber: z.number().int().min(1).max(10_000_000).nullable().optional(),
   commitRef: optionalText(200),
-  evidence: requiredText(10_000),
+  evidence: z.string().trim().max(10_000).default(''),
   recommendation: optionalText(5_000),
-  origin: requiredText(200),
+  origin: requiredText(200).default('unknown'),
 }).strict().superRefine((value, context) => {
   if (value.lineNumber != null && value.filePath == null) {
     context.addIssue({
@@ -97,6 +113,7 @@ export const listFindingsInputSchema = z.object({
   status: findingStatusSchema.optional(),
   query: requiredText(200).optional(),
   limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
 }).strict();
 
 export const updateFindingInputSchema = findingIdentitySchema.extend({
@@ -106,7 +123,7 @@ export const updateFindingInputSchema = findingIdentitySchema.extend({
   filePath: optionalText(1_000),
   lineNumber: z.number().int().min(1).max(10_000_000).nullable().optional(),
   commitRef: optionalText(200),
-  evidence: requiredText(10_000).optional(),
+  evidence: z.string().trim().max(10_000).optional(),
   recommendation: optionalText(5_000),
   origin: requiredText(200).optional(),
   note: optionalText(5_000),

@@ -4,31 +4,34 @@
 {% block content %}
   <nav class="breadcrumbs" aria-label="Migas de pan">
     <a href="/">Proyectos</a><span>/</span><a href="/projects/new">Añadir proyecto</a>
+    <span>/</span><a href="{{ listing.rootHref }}">{% if listing.rootDisplayPath == '/' %}Raíz{% else %}{{ listing.rootDisplayPath }}{% endif %}</a>
     {% for crumb in listing.breadcrumbs %}<span>/</span><a href="{{ crumb.href }}">{{ crumb.name }}</a>{% endfor %}
   </nav>
 
   <section class="page-heading page-heading--compact">
     <div>
       <h1>Añadir proyecto</h1>
-      <p class="lede">Navega por las carpetas disponibles y selecciona la del proyecto.</p>
+      <p class="lede">Elige la carpeta de tu proyecto. Puedes navegar o introducir su ruta completa.</p>
     </div>
   </section>
 
   <section class="directory-picker" aria-labelledby="directory-title">
+    <form method="get" action="/projects/new" class="directory-path-form">
+      <label>Ruta de la carpeta <input name="directoryPath" required maxlength="4096" value="{{ listing.displayPath }}" autocomplete="off"></label>
+      <button type="submit" class="button--paper">Abrir carpeta</button>
+    </form>
     <header class="directory-picker__header">
       <div><span class="field-hint">Ubicación actual</span><code id="directory-title">{{ listing.displayPath }}</code></div>
       {% if listing.parentHref %}<a class="button-link button-link--secondary" href="{{ listing.parentHref }}">Subir un nivel</a>{% endif %}
     </header>
 
-    {% if listing.relativePath %}
-      <form method="post" action="/projects/register" class="selection-panel">
-        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
-        <input type="hidden" name="relativePath" value="{{ listing.relativePath }}">
-        <div class="selection-panel__info"><span class="field-hint">Carpeta seleccionada</span><strong>{{ listing.displayPath }}</strong></div>
-        <label>Descripción <span class="optional">opcional</span><textarea name="description" maxlength="2000" rows="3" placeholder="Añade contexto útil para ti y para los agentes"></textarea></label>
-        <button type="submit">{{ icon('check') }}Seleccionar esta carpeta</button>
-      </form>
-    {% endif %}
+    <form method="post" action="/projects/register" class="selection-panel">
+      <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+      <input type="hidden" name="directoryPath" value="{{ listing.displayPath }}">
+      <div class="selection-panel__info"><span class="field-hint">Carpeta seleccionada</span><strong>{{ listing.displayPath }}</strong></div>
+      <label>Descripción <span class="optional">opcional</span><textarea name="description" maxlength="2000" rows="3" placeholder="Añade contexto útil para ti y para los agentes"></textarea></label>
+      <button type="submit">{{ icon('check') }}Seleccionar esta carpeta</button>
+    </form>
 
     {% if listing.directories.length %}
       <h2 class="directory-list-title">Subcarpetas</h2>

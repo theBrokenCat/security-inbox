@@ -11,10 +11,12 @@ import { expect, test, vi } from 'vitest';
 import { SecurityInboxService } from '../../src/core/service.js';
 import { openDatabase, type SqliteDatabase } from '../../src/storage/database.js';
 import { testOwnerId } from '../support/owner.js';
+import { downgradeFindingsToV3 } from '../support/legacy-v3.js';
 
 const execFileAsync = promisify(execFile);
 
 function downgradeProjectsToV1(path: string): void {
+  downgradeFindingsToV3(path);
   const legacy = new BetterSqlite3(path);
   // A real version 1 database has no users table and no owner_id, so both are removed here.
   legacy.pragma('foreign_keys = OFF');
@@ -222,7 +224,7 @@ test('upgrades a v1 database to the current version without changing existing pr
   try {
     const upgraded = openDatabase(path, { defaultUserSlug: 'legacy-owner' });
     try {
-      expect(upgraded.pragma('user_version', { simple: true })).toBe(3);
+      expect(upgraded.pragma('user_version', { simple: true })).toBe(4);
       expect((upgraded.prepare('PRAGMA table_info(projects)').all() as Array<{ name: string }>)
         .map(({ name }) => name)).toContain('directory_path');
       expect(upgraded.prepare('SELECT id, directory_path FROM projects').get()).toEqual({
@@ -272,14 +274,14 @@ test('rejects a future schema version without downgrading it', () => {
   const directory = mkdtempSync(join(tmpdir(), 'security-inbox-future-schema-'));
   const path = join(directory, 'inbox.sqlite');
   const seed = new BetterSqlite3(path);
-  seed.pragma('user_version = 4');
+  seed.pragma('user_version = 5');
   seed.close();
 
   try {
-    expect(() => openDatabase(path)).toThrow(/version 4/i);
+    expect(() => openDatabase(path)).toThrow(/version 5/i);
     const reopened = new BetterSqlite3(path);
     try {
-      expect(reopened.pragma('user_version', { simple: true })).toBe(4);
+      expect(reopened.pragma('user_version', { simple: true })).toBe(5);
     } finally {
       reopened.close();
     }

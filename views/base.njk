@@ -12,7 +12,7 @@
   <header class="masthead">
     <a class="brand" href="/" aria-label="Security Inbox, proyectos">
       <span class="brand__mark" aria-hidden="true">{{ icon('shield') }}</span>
-      <span><strong>Security Inbox</strong><small>Gestión local de hallazgos</small></span>
+      <span><strong>Security Inbox</strong><small>Incidencias para retomar después</small></span>
     </a>
     <div class="masthead__session">
       {% if currentUser %}
@@ -46,6 +46,6 @@
   <main id="contenido" class="page-shell">
     {% block content %}{% endblock %}
   </main>
-  <footer class="footer">{{ icon('shield') }}Una sospecha registrada no es una vulnerabilidad confirmada.</footer>
+  <footer class="footer">{{ icon('inbox') }}Apunta lo que encuentres. Retómalo cuando toque.</footer>
 </body>
 </html>

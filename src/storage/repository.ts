@@ -4,6 +4,7 @@ import type {
   FindingEvent,
   FindingStatus,
   FindingSummary,
+  FindingsPage,
   ListFindingsInput,
   ListProjectsInput,
   Project,
@@ -46,6 +47,7 @@ type ProjectSummaryRow = ProjectRow & {
   medium_count: number;
   low_count: number;
   informational_count: number;
+  unclassified_count: number;
   open_total: number;
   pending_review_count: number;
 };
@@ -78,6 +80,8 @@ type EventRow = {
   to_status: FindingStatus | null;
   note: string | null;
   changes_json: string | null;
+  actor_slug: string | null;
+  actor_name: string | null;
   created_at: string;
 };
 
@@ -147,6 +151,7 @@ function toEvent(row: EventRow): FindingEvent {
     toStatus: row.to_status,
     note: row.note,
     changes: row.changes_json ? JSON.parse(row.changes_json) : null,
+    actor: row.actor_slug === null ? null : { slug: row.actor_slug, name: row.actor_name! },
     createdAt: row.created_at,
   };
 }
@@ -197,6 +202,7 @@ export class SecurityInboxRepository {
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'medium' THEN 1 ELSE 0 END) AS medium_count,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'low' THEN 1 ELSE 0 END) AS low_count,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'informational' THEN 1 ELSE 0 END) AS informational_count,
+        SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') AND f.severity = 'unclassified' THEN 1 ELSE 0 END) AS unclassified_count,
         SUM(CASE WHEN f.status IN ('pending_review', 'confirmed', 'in_progress') THEN 1 ELSE 0 END) AS open_total,
         SUM(CASE WHEN f.status = 'pending_review' THEN 1 ELSE 0 END) AS pending_review_count,
         MAX(p.updated_at, COALESCE(MAX(f.updated_at), p.updated_at)) AS last_activity_at
@@ -216,6 +222,7 @@ export class SecurityInboxRepository {
         medium: row.medium_count,
         low: row.low_count,
         informational: row.informational_count,
+        unclassified: row.unclassified_count,
       };
       return {
         ...toProject(row),
@@ -321,9 +328,8 @@ export class SecurityInboxRepository {
     return { ...toFinding(row), history: history.map(toEvent) };
   }
 
-  listFindings(input: ListFindingsInput): FindingSummary[] {
-    const rows = this.database.prepare(`
-      SELECT * FROM findings
+  listFindingsPage(input: ListFindingsInput): FindingsPage {
+    const filters = `
       WHERE project_id = @projectId
         AND (@severity IS NULL OR severity = @severity)
         AND (@status IS NULL OR status = @status)
@@ -333,31 +339,46 @@ export class SecurityInboxRepository {
           OR instr(lower(description), lower(@query)) > 0
           OR instr(lower(evidence), lower(@query)) > 0
           OR instr(lower(origin), lower(@query)) > 0
+          OR instr(lower(file_path), lower(@query)) > 0
+          OR instr(lower(commit_ref), lower(@query)) > 0
         )
-      ORDER BY updated_at DESC, id
-      LIMIT @limit
-    `).all({
+    `;
+    const parameters = {
       projectId: input.projectId,
       severity: input.severity ?? null,
       status: input.status ?? null,
       query: input.query ?? null,
       limit: input.limit ?? 100,
-    }) as FindingRow[];
-
-    return rows.map((row) => {
-      const finding = toFinding(row);
+      offset: input.offset ?? 0,
+    };
+    // Count and rows share a read snapshot even while another adapter writes to SQLite.
+    return this.database.transaction(() => {
+      const { total } = this.database.prepare(`SELECT count(*) AS total FROM findings ${filters}`)
+        .get(parameters) as { total: number };
+      const rows = this.database.prepare(`
+        SELECT * FROM findings ${filters}
+        ORDER BY updated_at DESC, id LIMIT @limit OFFSET @offset
+      `).all(parameters) as FindingRow[];
+      const findings = rows.map((row): FindingSummary => {
+        const finding = toFinding(row);
+        return {
+          id: finding.id,
+          projectId: finding.projectId,
+          title: finding.title,
+          severity: finding.severity,
+          status: finding.status,
+          origin: finding.origin,
+          filePath: finding.filePath,
+          lineNumber: finding.lineNumber,
+          updatedAt: finding.updatedAt,
+        };
+      });
+      const next = parameters.offset + findings.length;
       return {
-        id: finding.id,
-        projectId: finding.projectId,
-        title: finding.title,
-        severity: finding.severity,
-        status: finding.status,
-        origin: finding.origin,
-        filePath: finding.filePath,
-        lineNumber: finding.lineNumber,
-        updatedAt: finding.updatedAt,
+        findings, total, limit: parameters.limit, offset: parameters.offset,
+        nextOffset: next < total ? next : null,
       };
-    });
+    })();
   }
 
   updateFinding(finding: Finding, normalizedTitle: string): void {
@@ -393,13 +414,15 @@ export class SecurityInboxRepository {
   insertEvent(event: FindingEvent): void {
     this.database.prepare(`
       INSERT INTO finding_events (
-        id, finding_id, kind, from_status, to_status, note, changes_json, created_at
+        id, finding_id, kind, from_status, to_status, note, changes_json, created_at, actor_slug, actor_name
       ) VALUES (
-        @id, @findingId, @kind, @fromStatus, @toStatus, @note, @changesJson, @createdAt
+        @id, @findingId, @kind, @fromStatus, @toStatus, @note, @changesJson, @createdAt, @actorSlug, @actorName
       )
     `).run({
       ...event,
       changesJson: event.changes ? JSON.stringify(event.changes) : null,
+      actorSlug: event.actor?.slug ?? null,
+      actorName: event.actor?.name ?? null,
     });
   }
 

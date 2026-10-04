@@ -124,7 +124,9 @@ describe('Security Inbox web adapter', () => {
     expect(rootPicker.statusCode).toBe(200);
     expect(rootPicker.body).toContain('/srv/projects');
     expect(rootPicker.body).toContain('href="/projects/new?path=alpha"');
-    expect(rootPicker.body).not.toContain('Seleccionar esta carpeta');
+    expect(rootPicker.body).toContain('Seleccionar esta carpeta');
+    expect(rootPicker.body).toContain('name="directoryPath"');
+    expect(rootPicker.body).toContain('Abrir carpeta');
 
     const selected = await get('/projects/new?path=alpha');
     expect(selected.statusCode).toBe(200);
@@ -159,6 +161,30 @@ describe('Security Inbox web adapter', () => {
     });
     expect(retry.headers.location).toBe(`/projects/${project.id}/findings?created=0`);
     expect(service.listProjects()).toHaveLength(1);
+  });
+
+  test('selects an absolute directory outside the launch folder and navigates to its parent', async () => {
+    await app.close();
+    app = buildWebApp({ service, directories: new ProjectDirectoryManager(service), port: PORT });
+    await app.ready();
+    const chosen = join(directory, 'carpeta con espacios & más');
+    mkdirSync(chosen);
+    const page = await get(`/projects/new?directoryPath=${encodeURIComponent(chosen)}`);
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain('carpeta con espacios &amp; más');
+    expect(page.body).toContain(`href="/projects/new?path=${encodeURIComponent(directory.slice(1))}"`);
+    expect(page.body).toContain('Seleccionar esta carpeta');
+    const created = await post('/projects/register', { _csrf: csrfFrom(page.body), directoryPath: chosen });
+    expect(created.statusCode).toBe(303);
+    const project = service.listProjects()[0]!;
+    expect(project.directoryPath).toBe(chosen);
+    const retry = await post('/projects/register', { _csrf: csrfFrom(page.body), directoryPath: chosen });
+    expect(retry.headers.location).toBe(`/projects/${project.id}/findings?created=0`);
+    expect(service.listProjects()).toHaveLength(1);
+    const invalid = await get('/projects/new?directoryPath=not-absolute');
+    expect(invalid.statusCode).toBe(400);
+    const missing = await post('/projects/register', { _csrf: csrfFrom(page.body) });
+    expect(missing.statusCode).toBe(400);
   });
 
   test('shows non-terminal severity totals and pending-review count per project', async () => {
@@ -233,7 +259,7 @@ describe('Security Inbox web adapter', () => {
 
     const empty = await get(`/projects/${emptyProject.id}/findings`);
     expect(empty.statusCode).toBe(200);
-    expect(empty.body).toContain('No hay hallazgos en este proyecto');
+    expect(empty.body).toContain('No hay incidencias en esta lista');
 
     const filtered = await get(
       `/projects/${project.id}/findings?severity=high&status=confirmed&query=${encodeURIComponent(' SQL ')}`,
@@ -293,7 +319,7 @@ describe('Security Inbox web adapter', () => {
     const detailPath = location.split('?')[0]!;
     const detail = await get(location);
     expect(detail.statusCode).toBe(200);
-    expect(detail.body).toContain('Hallazgo registrado como sospecha');
+    expect(detail.body).toContain('Incidencia guardada sin revisar');
     expect(detail.body).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(detail.body).toContain('&lt;b&gt;raw evidence&lt;/b&gt;');
     expect(detail.body).not.toContain('<img src=x');
@@ -509,7 +535,7 @@ describe('Security Inbox web adapter', () => {
 
     const projects = await get('/');
     expect(projects.body).not.toMatch(/cuaderno|índice de investigación/i);
-    expect(projects.body).toContain('Gestión local de hallazgos');
+    expect(projects.body).toContain('Incidencias para retomar después');
 
     expect(resolveListenHost({})).toBe('127.0.0.1');
     expect(resolveListenHost({ SECURITY_INBOX_CONTAINER: 'true' })).toBe('0.0.0.0');
@@ -654,5 +680,90 @@ describe('Security Inbox request guards on the user routes', () => {
     expect(widths.reduce((total, width) => total + width, 0)).toBe(100);
     // Equal counts must not produce a segment that misrepresents its share.
     expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('issue capture and recoverable forms', () => {
+  test('captures a functional issue with title and context and attributes every web change', async () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'UI', description: 'Synthetic project' });
+    const page = await get(`/projects/${project.id}/findings/new`);
+    expect(page.body).toContain('value="unclassified" selected');
+    expect(page.body).toMatch(/formnovalidate/);
+    const created = await post(`/projects/${project.id}/findings`, { _csrf: csrfFrom(page.body), idempotencyKey: 'web-quick', title: 'El botón pierde el foco', description: 'Al guardar con el teclado.' });
+    expect(created.statusCode).toBe(303);
+    const finding = service.listFindings({ projectId: project.id })[0]!;
+    const identity = { projectId: project.id, findingId: finding.id };
+    expect(service.getFinding(identity)).toMatchObject({ severity: 'unclassified', evidence: '', origin: 'web', history: [{ actor: { slug: 'tester', name: 'Tester' } }] });
+    const detail = await get(created.headers.location!);
+    expect(detail.body).toContain('Tester · tester');
+    const status = await post(`/projects/${project.id}/findings/${finding.id}/status`, { _csrf: csrfFrom(detail.body), status: 'in_progress' });
+    expect(status.statusCode).toBe(303);
+    expect(service.getFinding(identity).history[1]!.actor?.slug).toBe('tester');
+  });
+
+  test('keeps a failed capture, highlights its field and accepts the corrected draft once', async () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Draft', description: 'Synthetic project' });
+    const input = { _csrf: await csrf(), idempotencyKey: 'draft-key', title: 'Lost focus <script>title()</script>', description: '<img src=x onerror=alert(1)> when saving', lineNumber: '12' };
+    const rejected = await post(`/projects/${project.id}/findings`, input);
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.body).toContain('Lost focus &lt;script&gt;title()&lt;/script&gt;');
+    expect(rejected.body).toContain('&lt;img src=x onerror=alert(1)&gt; when saving');
+    expect(rejected.body).not.toContain('<script>title()');
+    expect(rejected.body).toContain('name="idempotencyKey" value="draft-key"');
+    expect(rejected.body).toContain('aria-describedby="lineNumber-error"');
+    expect(service.listFindings({ projectId: project.id })).toHaveLength(0);
+    const corrected = { ...input, _csrf: csrfFrom(rejected.body), filePath: 'src/profile.ts' };
+    const accepted = await post(`/projects/${project.id}/findings`, corrected);
+    expect(accepted.statusCode).toBe(303);
+    expect((await post(`/projects/${project.id}/findings`, corrected)).statusCode).toBe(303);
+    expect(service.listFindings({ projectId: project.id })).toHaveLength(1);
+  });
+
+  test('keeps edits, status notes and standalone notes on their own forms after validation', async () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Review', description: 'Synthetic project' });
+    const finding = service.registerFinding({ projectId: project.id, idempotencyKey: 'review', title: 'Original', description: 'Original context' }).finding;
+    const path = `/projects/${project.id}/findings/${finding.id}`;
+    const token = await csrf();
+    const draft = { _csrf: token, title: 'Edited draft', description: 'Keep this context', severity: 'low', origin: 'web', evidence: '', filePath: '', lineNumber: '12', note: 'Keep this edit note' };
+    const invalidEdit = await post(`${path}/edit`, draft);
+    expect(invalidEdit.statusCode).toBe(400);
+    expect(invalidEdit.body).toContain(`action="${path}/edit"`);
+    expect(invalidEdit.body).toContain('<details class="paper-panel" open>');
+    expect(invalidEdit.body).toContain('value="Edited draft"');
+    expect(invalidEdit.body).toContain('Keep this context');
+    expect(invalidEdit.body).toContain('Keep this edit note');
+    expect(invalidEdit.body).toContain('aria-describedby="edit-lineNumber-error"');
+    expect(service.getFinding({ projectId: project.id, findingId: finding.id }).history).toHaveLength(1);
+    expect((await post(`${path}/edit`, { ...draft, filePath: 'src/ui.ts' })).statusCode).toBe(303);
+    const invalidStatus = await post(`${path}/status`, { _csrf: token, status: 'resolved', note: '' });
+    expect(invalidStatus.statusCode).toBe(409);
+    expect(invalidStatus.body).toContain('value="resolved" selected');
+    expect(invalidStatus.body).toContain('aria-describedby="status-note-error"');
+    const invalidNote = await post(`${path}/notes`, { _csrf: token, note: 'Keep <script>note()</script>' + 'x'.repeat(5000) });
+    expect(invalidNote.statusCode).toBe(400);
+    expect(invalidNote.body).toContain('Keep &lt;script&gt;note()&lt;/script&gt;');
+    expect(invalidNote.body).toContain('aria-describedby="note-note-error"');
+    expect((await post(`${path}/status`, { _csrf: token, status: 'resolved', note: 'Verified the keyboard flow' })).statusCode).toBe(303);
+    expect(service.getFinding({ projectId: project.id, findingId: finding.id }).history.map(event => event.actor?.slug)).toEqual([undefined, 'tester', 'tester']);
+  });
+
+  test('shows the last pending issue on a second page and preserves filters in navigation', async () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Pages', description: 'Synthetic project' });
+    for (let i = 0; i < 101; i++) service.registerFinding({ projectId: project.id, idempotencyKey: `web-page-${i}`, title: `Pending issue ${i}`, description: 'Synthetic context' });
+    const filter = 'status=pending_review&severity=unclassified&query=Pending';
+    const first = await get(`/projects/${project.id}/findings?${filter}`);
+    expect(first.statusCode).toBe(200);
+    expect(first.body).toContain('Mostrando 1–100 de 101 incidencias');
+    const next = first.body.match(/href="([^"]+)">Siguientes<\/a>/)![1]!.replaceAll('&amp;', '&');
+    expect(next).toContain('offset=100');
+    expect(next).toContain('status=pending_review');
+    expect(next).toContain('severity=unclassified');
+    expect(next).toContain('query=Pending');
+    const second = await get(next);
+    expect(second.statusCode).toBe(200);
+    expect(second.body).toContain('Mostrando 101–101 de 101 incidencias');
+    expect(second.body).toContain('Anteriores');
+    expect(second.body).not.toContain('>Siguientes</a>');
+    expect((await get(`/projects/${project.id}/findings?offset=-1`)).statusCode).toBe(400);
   });
 });

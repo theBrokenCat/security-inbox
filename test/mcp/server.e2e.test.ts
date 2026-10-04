@@ -87,7 +87,10 @@ test('exposes exactly the ten Security Inbox tools over stdio', async () => {
       expect.arrayContaining(['projectId', 'findingId']),
     );
   }
-  expect(tools.find(({ name }) => name === 'register_project')?.inputSchema.required).toContain('relativePath');
+  expect(tools.find(({ name }) => name === 'register_project')?.inputSchema.properties)
+    .toHaveProperty('directoryPath');
+  expect(tools.find(({ name }) => name === 'register_project')?.inputSchema.properties)
+    .toHaveProperty('relativePath');
   expect(tools.find(({ name }) => name === 'update_finding')?.inputSchema.required).toEqual(
     expect.arrayContaining(['projectId', 'findingId']),
   );
@@ -181,6 +184,41 @@ test('lets an agent browse and register a directory, then edit its finding', asy
   });
 });
 
+test('supports an absolute host path with mapped deployments and rejects ambiguous selections', async () => {
+  const directoryPath = '/srv/projects/Gamma/nested';
+  const listing = await client.callTool({ name: 'browse_project_directories', arguments: { directoryPath } });
+  expect(listing.structuredContent).toMatchObject({ listing: { displayPath: directoryPath } });
+  const registered = await client.callTool({ name: 'register_project', arguments: { directoryPath } });
+  expect(registered.structuredContent).toMatchObject({ created: true, project: { directoryPath } });
+  const retry = await client.callTool({ name: 'register_project', arguments: { relativePath: 'Gamma/nested' } });
+  expect(retry.structuredContent).toMatchObject({ created: false, project: { directoryPath } });
+  for (const arguments_ of [{}, { relativePath: 'Gamma', directoryPath }]) {
+    const invalid = await client.callTool({ name: 'register_project', arguments: arguments_ });
+    expect(invalid.structuredContent).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+  }
+});
+
+test('registers directories outside the launch folder in native mode over stdio', async () => {
+  const directoryPath = join(tempDirectory, 'native folder');
+  mkdirSync(directoryPath);
+  const nativeClient = new Client({ name: 'native-directory-test', version: '1.0.0' });
+  const nativeTransport = new StdioClientTransport({
+    command: process.execPath,
+    args: [resolve('dist/src/mcp/server.js')],
+    env: { ...getDefaultEnvironment(), SECURITY_INBOX_DB: databasePath, SECURITY_INBOX_USER: 'tester' },
+    stderr: 'pipe',
+  });
+  try {
+    await nativeClient.connect(nativeTransport);
+    const listing = await nativeClient.callTool({ name: 'browse_project_directories', arguments: { directoryPath } });
+    expect(listing.structuredContent).toMatchObject({ listing: { displayPath: directoryPath, directories: [] } });
+    const result = await nativeClient.callTool({ name: 'register_project', arguments: { directoryPath } });
+    expect(result.structuredContent).toMatchObject({ created: true, project: { directoryPath } });
+  } finally {
+    await nativeClient.close();
+  }
+});
+
 test('returns invalid inputs as structured generic errors without echoing them', async () => {
   const secretInput = 'DO NOT ECHO INVALID INPUT';
   const invalid = await client.callTool({
@@ -209,7 +247,7 @@ test('runs the finding workflow with idempotency, isolation, history, safe error
     name: 'list_findings',
     arguments: { projectId, query: 'SQL injection' },
   });
-  expect(emptySearch.structuredContent).toEqual({ findings: [] });
+  expect(emptySearch.structuredContent).toEqual({ findings: [], total: 0, limit: 100, offset: 0, nextOffset: null });
 
   const input = {
     projectId,
@@ -268,7 +306,7 @@ test('runs the finding workflow with idempotency, isolation, history, safe error
     name: 'list_findings',
     arguments: { projectId: secondProjectId },
   });
-  expect(isolatedList.structuredContent).toEqual({ findings: [] });
+  expect(isolatedList.structuredContent).toEqual({ findings: [], total: 0, limit: 100, offset: 0, nextOffset: null });
 
   const isolatedGet = await client.callTool({
     name: 'get_finding',
@@ -411,4 +449,44 @@ test('scopes projects to the configured user and never takes the owner from inpu
   for (const project of mineNames) {
     expect((project as unknown as { owner: { slug: string } }).owner.slug).toBe('tester');
   }
+});
+
+test('captures a functional observation without classification and attributes all MCP changes', async () => {
+  const input = { projectId, idempotencyKey: 'functional-quick', title: 'Keyboard focus lost on save', description: 'Observed while editing the profile page.', filePath: 'src/profile.ts', lineNumber: 12 };
+  const created = await client.callTool({ name: 'register_finding', arguments: input });
+  expect(created.isError).not.toBe(true);
+  expect(created.structuredContent).toMatchObject({ created: true, finding: { severity: 'unclassified', evidence: '', origin: 'mcp', status: 'pending_review', history: [{ actor: { slug: 'tester', name: 'Tester' } }] } });
+  const findingId = (created.structuredContent as { finding: { id: string } }).finding.id;
+  const retry = await client.callTool({ name: 'register_finding', arguments: input });
+  expect(retry.structuredContent).toMatchObject({ created: false, finding: { id: findingId } });
+  const forged = await client.callTool({ name: 'add_finding_note', arguments: { projectId, findingId, note: 'Context', actor: { slug: 'invented', name: 'Invented' } } });
+  expect(forged.isError).toBe(true);
+  const edited = await client.callTool({ name: 'update_finding', arguments: { projectId, findingId, severity: 'low', evidence: 'Reproduced with the keyboard' } });
+  expect(edited.isError).not.toBe(true);
+  const started = await client.callTool({ name: 'update_finding_status', arguments: { projectId, findingId, status: 'in_progress' } });
+  expect(started.isError).not.toBe(true);
+  const noted = await client.callTool({ name: 'add_finding_note', arguments: { projectId, findingId, note: 'Keyboard flow checked' } });
+  expect((noted.structuredContent as { finding: { history: Array<{ actor: { slug: string } }> } }).finding.history.map(event => event.actor.slug)).toEqual(['tester', 'tester', 'tester', 'tester']);
+});
+
+test('retrieves the complete MCP backlog with pagination and searches by file path', async () => {
+  const seed = new SecurityInboxService(databasePath);
+  let backlogId: string;
+  const ids = new Set<string>();
+  try {
+    backlogId = seed.createProject({ ownerId: testOwnerId(seed), name: 'MCP backlog', description: 'Synthetic pagination fixture' }).id;
+    for (let i = 0; i < 101; i++) ids.add(seed.registerFinding({ projectId: backlogId, idempotencyKey: `mcp-page-${i}`, title: `Incidental issue ${i}`, description: 'Observed context', filePath: i === 0 ? 'src/mcp-pagination-example.ts' : null }).finding.id);
+  } finally { seed.close(); }
+  const first = await client.callTool({ name: 'list_findings', arguments: { projectId: backlogId!, status: 'pending_review', severity: 'unclassified' } });
+  expect(first.isError).not.toBe(true);
+  expect(first.structuredContent).toMatchObject({ total: 101, limit: 100, offset: 0, nextOffset: 100 });
+  const second = await client.callTool({ name: 'list_findings', arguments: { projectId: backlogId!, status: 'pending_review', severity: 'unclassified', offset: 100 } });
+  expect(second.structuredContent).toMatchObject({ total: 101, offset: 100, nextOffset: null });
+  const pageOne = (first.structuredContent as { findings: Array<{ id: string }> }).findings;
+  const pageTwo = (second.structuredContent as { findings: Array<{ id: string }> }).findings;
+  expect(pageOne).toHaveLength(100);
+  expect(pageTwo).toHaveLength(1);
+  expect(new Set([...pageOne, ...pageTwo].map(f => f.id))).toEqual(ids);
+  const byFile = await client.callTool({ name: 'list_findings', arguments: { projectId: backlogId!, query: 'src/mcp-pagination-example.ts' } });
+  expect(byFile.structuredContent).toMatchObject({ total: 1, nextOffset: null });
 });

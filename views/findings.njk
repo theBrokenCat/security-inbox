@@ -5,7 +5,7 @@
   <nav class="breadcrumbs" aria-label="Migas de pan"><a href="/">Proyectos</a>{{ icon('chevron-right') }}<span>{{ project.name }}</span></nav>
   <section class="page-heading page-heading--compact">
     <div><h1>{{ project.name }}</h1><p class="lede">{{ project.description }}</p>{% if project.directoryPath %}<code class="repo-ref">{{ icon('folder') }}{{ project.directoryPath }}</code>{% endif %}{% if project.repositoryReference %}<code class="repo-ref">{{ icon('folder') }}{{ project.repositoryReference }}</code>{% endif %}</div>
-    <a class="button-link" href="/projects/{{ project.id }}/findings/new">{{ icon('plus') }}Registrar hallazgo</a>
+    <a class="button-link" href="/projects/{{ project.id }}/findings/new">{{ icon('plus') }}Apuntar incidencia</a>
   </section>
 
   <section class="owner-bar">
@@ -27,8 +27,8 @@
 
   {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
 
-  <form method="get" action="/projects/{{ project.id }}/findings" class="filter-bar" aria-label="Filtrar hallazgos">
-    <label>{{ icon('search') }}Buscar <input type="search" name="query" maxlength="200" value="{{ filters.query or '' }}" placeholder="Título u origen"></label>
+  <form method="get" action="/projects/{{ project.id }}/findings" class="filter-bar" aria-label="Filtrar incidencias">
+    <label>{{ icon('search') }}Buscar <input type="search" name="query" maxlength="200" value="{{ filters.query or '' }}" placeholder="Texto, archivo o commit"></label>
     <label>Gravedad
       <select name="severity"><option value="">Todas</option>{% for option in severityOptions %}<option value="{{ option.value }}"{% if filters.severity == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>
     </label>
@@ -39,7 +39,7 @@
   </form>
 
   {% if findings.length %}
-    <ol class="finding-list" aria-label="Hallazgos">
+    <ol class="finding-list" aria-label="Incidencias">
       {% for finding in findings %}
         <li class="finding-row severity-border--{{ finding.severity }}">
           <div class="finding-row__body">
@@ -53,7 +53,13 @@
     </ol>
   {% else %}
     <section class="empty-state">
-      <div><h2>No hay hallazgos en este proyecto</h2><p>{% if filters.query or filters.severity or filters.status %}Ninguno coincide con estos filtros.{% else %}Anota una sospecha cuando tengas evidencia concreta que revisar.{% endif %}</p></div>
+      <div><h2>No hay incidencias en esta lista</h2><p>{% if pagination.total %}Vuelve a la primera página para ver las incidencias.{% elif filters.query or filters.severity or filters.status %}Ninguna coincide con estos filtros.{% else %}Apunta cualquier fallo que encuentres para retomarlo más adelante.{% endif %}</p>{% if pagination.total %}<a href="{{ pagination.firstHref }}">Primera página</a>{% endif %}</div>
     </section>
+  {% endif %}
+  {% if pagination.total %}
+    <nav class="pagination" aria-label="Páginas de incidencias">
+      <p>Mostrando {{ pagination.start }}–{{ pagination.end }} de {{ pagination.total }} incidencias</p>
+      <div>{% if pagination.previousHref %}<a class="button-link button-link--secondary" href="{{ pagination.previousHref }}">Anteriores</a>{% endif %}{% if pagination.nextHref %}<a class="button-link" href="{{ pagination.nextHref }}">Siguientes</a>{% endif %}</div>
+    </nav>
   {% endif %}
 {% endblock %}

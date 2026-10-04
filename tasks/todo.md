@@ -81,3 +81,30 @@ Revisión iteración 2: pass, con 0 Blocking y 0 Important.
 - [x] Actualizar documentación e instrucciones duraderas.
 - [x] Ejecutar suite, typecheck, build y QA visual sobre datos aislados.
 - [x] Dejar cambios staged, sin commit ni push.
+
+---
+
+## Iteración 4 — Bandeja de incidencias para agentes
+
+- [x] Admitir fallos de cualquier tipo y actualizar textos, documentación y skill.
+- [x] Permitir captura con título y contexto, sin exigir gravedad ni evidencia.
+- [x] Paginar web y MCP, mantener filtros y buscar también por archivo y commit.
+- [x] Registrar el autor de cada evento desde los adaptadores y conservar su atribución.
+- [x] Mantener los borradores al corregir errores de los formularios.
+- [x] Migrar al esquema v4 conservando datos, historial e idempotencia; verificar rollback.
+- [x] Verificar con Node 24: 108 pruebas, typecheck, build, seed y demo aislados.
+- [x] Validar la skill, revisar el diff y comprobar la interfaz en escritorio y móvil.
+
+La captura guarda una observación y permite continuar la tarea actual. La revisión
+y la corrección se retoman cuando el usuario las pide; no se lanzan agentes automáticamente.
+
+---
+
+## Iteración 5 — Selección libre de carpetas
+
+- [x] Iniciar el selector nativo en la carpeta personal y permitir subir de nivel.
+- [x] Añadir selección por ruta completa en web y MCP, conservando `relativePath`.
+- [x] Mantener las rutas canónicas, el reintento por carpeta y los límites explícitos de despliegue.
+- [x] Verificar carpetas fuera del directorio de arranque, symlinks, rutas no disponibles y montaje Docker.
+- [x] Pasar 114 pruebas, typecheck, build y validación de skill con Node 24.
+- [x] Activar la web sin raíz de proyectos predefinida y verificar el selector en Chrome.

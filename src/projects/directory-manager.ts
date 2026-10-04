@@ -1,10 +1,12 @@
 import { readdirSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 
 import { AppError } from '../core/errors.js';
 import type {
   DirectoryEntry,
   DirectoryListing,
+  DirectorySelection,
   RegisterProjectDirectoryInput,
   RegisterProjectDirectoryResult,
 } from '../core/types.js';
@@ -42,24 +44,26 @@ function normalizedRelativePath(value = ''): string {
 export class ProjectDirectoryManager {
   private readonly accessibleRoot: string;
   private readonly displayRoot: string;
+  private readonly initialRelativePath: string;
 
   constructor(
     private readonly service: SecurityInboxService,
     options: ProjectDirectoryOptions = {},
   ) {
     try {
-      this.accessibleRoot = realpathSync(options.accessibleRoot ?? process.cwd());
+      this.accessibleRoot = realpathSync(options.accessibleRoot ?? parse(process.cwd()).root);
       if (!statSync(this.accessibleRoot).isDirectory()) throw new Error('Not a directory');
     } catch {
       throw new AppError('DIRECTORY_UNAVAILABLE', 'Configured project root is unavailable');
     }
     this.displayRoot = resolve(options.displayRoot ?? this.accessibleRoot);
+    this.initialRelativePath = options.accessibleRoot ? '' : relative(this.accessibleRoot, homedir()).replaceAll(sep, '/');
   }
 
-  browse(relativePath = ''): DirectoryListing {
-    const parsed = browseProjectDirectoriesInputSchema.safeParse({ relativePath });
+  browse(input: DirectorySelection | string = {}): DirectoryListing {
+    const parsed = browseProjectDirectoriesInputSchema.safeParse(typeof input === 'string' ? { relativePath: input } : input);
     if (!parsed.success) throw validationError(parsed.error);
-    const current = this.resolveDirectory(parsed.data.relativePath);
+    const current = this.resolveDirectory(this.selectionPath(parsed.data, this.initialRelativePath));
     let entries;
     try {
       entries = readdirSync(current.accessiblePath, { withFileTypes: true });
@@ -98,24 +102,31 @@ export class ProjectDirectoryManager {
   register(input: RegisterProjectDirectoryInput): RegisterProjectDirectoryResult {
     const parsed = registerProjectDirectoryInputSchema.safeParse(input);
     if (!parsed.success) throw validationError(parsed.error);
-    const selected = this.resolveDirectory(parsed.data.relativePath);
-    if (!selected.relativePath) {
-      throw new AppError('DIRECTORY_INVALID', 'Select a directory below the configured root');
-    }
+    const selected = this.resolveDirectory(this.selectionPath(parsed.data));
     return this.service.registerProjectDirectory({
-      name: basename(selected.relativePath),
+      name: basename(selected.displayPath) || selected.displayPath,
       description: parsed.data.description || `Local project at ${selected.displayPath}`,
       directoryPath: selected.displayPath,
       ownerId: parsed.data.ownerId,
     });
   }
 
+  private selectionPath(input: DirectorySelection, fallback = ''): string {
+    if (input.directoryPath === undefined) return input.relativePath ?? fallback;
+    if (input.directoryPath.includes('\0') || !isAbsolute(input.directoryPath)) {
+      throw new AppError('DIRECTORY_INVALID', 'Choose an absolute directory path');
+    }
+    const displayPath = resolve(input.directoryPath);
+    const selected = relative(this.displayRoot, displayPath).replaceAll(sep, '/');
+    // Absolute paths use the displayed namespace, including host paths mapped into Docker.
+    // The same containment and symlink checks apply to both input forms.
+    return normalizedRelativePath(selected);
+  }
+
   private resolveDirectory(value = ''): ResolvedDirectory {
     const relativePath = normalizedRelativePath(value);
     const requestedPath = resolve(this.accessibleRoot, relativePath);
-    if (requestedPath !== this.accessibleRoot && !requestedPath.startsWith(`${this.accessibleRoot}${sep}`)) {
-      throw new AppError('DIRECTORY_INVALID', 'Directory is outside the configured root');
-    }
+    normalizedRelativePath(relative(this.accessibleRoot, requestedPath).replaceAll(sep, '/'));
     let accessiblePath: string;
     try {
       accessiblePath = realpathSync(requestedPath);
@@ -124,9 +135,7 @@ export class ProjectDirectoryManager {
       if (error instanceof AppError) throw error;
       throw new AppError('DIRECTORY_UNAVAILABLE', 'Directory is unavailable');
     }
-    if (accessiblePath !== this.accessibleRoot && !accessiblePath.startsWith(`${this.accessibleRoot}${sep}`)) {
-      throw new AppError('DIRECTORY_INVALID', 'Directory is outside the configured root');
-    }
+    normalizedRelativePath(relative(this.accessibleRoot, accessiblePath).replaceAll(sep, '/'));
     const canonicalRelativePath = relative(this.accessibleRoot, accessiblePath).replaceAll(sep, '/');
     return {
       relativePath: canonicalRelativePath,

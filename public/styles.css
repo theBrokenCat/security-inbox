@@ -286,11 +286,22 @@ p { margin: .45rem 0 0; }
 .severity-border--medium { border-left-color: var(--medium); }
 .severity-border--low { border-left-color: var(--low); }
 .severity-border--informational { border-left-color: var(--informational); }
+.severity-border--unclassified { border-left-color: var(--muted); }
+.project-card--unclassified { --card-severity: var(--muted); }
+.severity-bar__segment--unclassified { background: var(--muted); }
+.severity-tag--unclassified, .severity-chip--unclassified { color: var(--text-soft); background: var(--surface-muted); }
 
 .finding-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .finding-form--compact { margin-top: 1rem; }
 .span-2 { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: .7rem; }
+.finding-extra > summary { gap: .5rem; }
+.form-feedback { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--critical); border-radius: 8px; background: var(--critical-soft); }
+.field-error { display: block; margin-top: .35rem; color: var(--critical); font-size: .82rem; font-weight: 500; }
+[aria-invalid="true"] { border-color: var(--critical); }
+.pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1.25rem; }
+.pagination > div { display: flex; flex-wrap: wrap; gap: .6rem; }
+.pagination p, .history-actor { color: var(--muted); font-size: .85rem; }
 .duplicate-box, .notice { margin-bottom: 1rem; padding: 1rem; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px; }
 .case-file { padding: clamp(1.25rem, 4vw, 2rem); border-left-width: 5px; }
 .case-file__header { display: flex; justify-content: space-between; align-items: start; gap: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
@@ -316,6 +327,7 @@ summary { display: flex; align-items: center; min-height: 2.75rem; font-size: 1.
 .footer { padding: 1.2rem; text-align: center; color: var(--muted); background: var(--surface); border-top: 1px solid var(--border); font-size: .82rem; }
 
 .directory-picker { overflow: hidden; }
+.directory-path-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .75rem; padding: 1.2rem; }
 .directory-picker__header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.2rem; background: var(--surface-muted); border-bottom: 1px solid var(--border); }
 .directory-picker__header code { display: block; overflow-wrap: anywhere; color: var(--ink); }
 .directory-list { margin: 0; padding: 0; list-style: none; }
@@ -334,7 +346,7 @@ summary { display: flex; align-items: center; min-height: 2.75rem; font-size: 1.
 
 @media (max-width: 760px) {
   .page-heading, .case-file__header, .directory-picker__header { align-items: stretch; flex-direction: column; }
-  .filter-bar, .finding-form, .action-grid, .selection-panel { grid-template-columns: 1fr; }
+  .filter-bar, .finding-form, .action-grid, .selection-panel, .directory-path-form { grid-template-columns: 1fr; }
   .case-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span-2 { grid-column: auto; }
   .finding-row { grid-template-columns: 1fr; }

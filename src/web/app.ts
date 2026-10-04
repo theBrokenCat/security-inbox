@@ -28,8 +28,8 @@ export type WebAppOptions = {
 type FormBody = Record<string, unknown>;
 type ProjectParams = { projectId: string };
 type FindingParams = ProjectParams & { findingId: string };
-type FindingQuery = { severity?: string; status?: string; query?: string; created?: string; updated?: string };
-type DirectoryQuery = { path?: string };
+type FindingQuery = { severity?: string; status?: string; query?: string; offset?: string; created?: string; updated?: string };
+type DirectoryQuery = { path?: string; directoryPath?: string };
 type ProjectsQuery = { scope?: string };
 
 const userCookieName = 'si_user';
@@ -69,6 +69,7 @@ const severityOptions = [
   { value: 'medium', label: 'Media' },
   { value: 'low', label: 'Baja' },
   { value: 'informational', label: 'Informativa' },
+  { value: 'unclassified', label: 'Sin clasificar' },
 ] as const;
 
 const statusOptions = [
@@ -121,7 +122,7 @@ const publicErrors: Record<AppError['code'], { status: number; title: string; me
   DIRECTORY_INVALID: {
     status: 400,
     title: 'Directorio no válido',
-    message: 'Selecciona una carpeta dentro de la raíz permitida.',
+    message: 'Indica una ruta completa de carpeta válida y accesible para esta instancia.',
   },
   DIRECTORY_UNAVAILABLE: {
     status: 404,
@@ -173,6 +174,29 @@ function queryText(value: unknown): string | undefined {
   if (typeof value !== 'string') throw new AppError('VALIDATION_ERROR', 'Invalid input');
   return value.trim() || undefined;
 }
+
+const findingFormFields = [
+  'idempotencyKey', 'title', 'description', 'severity', 'origin', 'filePath',
+  'lineNumber', 'commitRef', 'evidence', 'recommendation', 'note', 'status',
+] as const;
+
+function findingFormValues(body: FormBody): FormBody {
+  return Object.fromEntries(findingFormFields.map((key) => [key, text(body, key)]));
+}
+
+const fieldHints: Record<string, string> = {
+  title: 'Escribe un título de entre 1 y 200 caracteres.',
+  description: 'Añade contexto de entre 1 y 10.000 caracteres.',
+  severity: 'Elige una gravedad de la lista o Sin clasificar.',
+  origin: 'Usa un origen de hasta 200 caracteres.',
+  filePath: 'La ruta puede tener hasta 1.000 caracteres.',
+  lineNumber: 'Usa una línea entera entre 1 y 10.000.000 e indica también el archivo.',
+  commitRef: 'El commit puede tener hasta 200 caracteres.',
+  evidence: 'La evidencia puede tener hasta 10.000 caracteres.',
+  recommendation: 'La recomendación puede tener hasta 5.000 caracteres.',
+  note: 'Escribe una nota de entre 1 y 5.000 caracteres.',
+  status: 'Elige un estado de la lista.',
+};
 
 // The severity bar is sized here, not in the template: the CSP forbids inline styles, so the
 // proportion has to arrive as a class name from a closed set of 5% steps. Widths are shared
@@ -230,6 +254,7 @@ function directoryView(listing: DirectoryListing) {
   const segments = listing.relativePath.split('/').filter(Boolean);
   return {
     ...listing,
+    rootHref: '/projects/new?path=',
     parentHref: listing.parentRelativePath === null
       ? null
       : `/projects/new?path=${encodeURIComponent(listing.parentRelativePath)}`,
@@ -279,6 +304,10 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
   const currentUser = (request: FastifyRequest): User | undefined => {
     const slug = readCookie(request.headers.cookie, userCookieName);
     return slug ? service.findUserBySlug(slug) : undefined;
+  };
+  const currentActor = (request: FastifyRequest) => {
+    const user = currentUser(request);
+    return user ? { slug: user.slug, name: user.name } : null;
   };
   const requireCurrentUser = (request: FastifyRequest): User => {
     const user = currentUser(request);
@@ -418,7 +447,10 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
 
   app.get<{ Querystring: DirectoryQuery }>('/projects/new', async (request, reply) => {
     requireCurrentUser(request);
-    const listing = directories.browse(queryText(request.query.path));
+    const listing = directories.browse({
+      ...(request.query.path === undefined ? {} : { relativePath: request.query.path }),
+      ...(request.query.directoryPath === undefined ? {} : { directoryPath: request.query.directoryPath }),
+    });
     return reply.type('text/html; charset=utf-8').send(renderFor(request, 'project-new.njk', {
       listing: directoryView(listing),
     }));
@@ -426,7 +458,8 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
 
   app.post<{ Body: FormBody }>('/projects/register', async (request, reply) => {
     const result = directories.register({
-      relativePath: text(request.body, 'relativePath'),
+      ...(request.body.relativePath === undefined ? {} : { relativePath: text(request.body, 'relativePath') }),
+      ...(request.body.directoryPath === undefined ? {} : { directoryPath: text(request.body, 'directoryPath') }),
       description: optionalText(request.body, 'description'),
       ownerId: requireCurrentUser(request).id,
     });
@@ -442,16 +475,33 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
       const severity = queryText(request.query.severity);
       const status = queryText(request.query.status);
       const query = queryText(request.query.query);
-      const findings = service.listFindings({
+      const offset = queryText(request.query.offset);
+      const page = service.listFindingsPage({
         projectId: request.params.projectId,
+        offset: offset === undefined ? 0 : Number(offset),
         ...(severity ? { severity: severity as (typeof SEVERITIES)[number] } : {}),
         ...(status ? { status: status as (typeof FINDING_STATUSES)[number] } : {}),
         ...(query ? { query } : {}),
       });
+      const pageHref = (pageOffset: number) => {
+        const parameters = new URLSearchParams({ offset: String(pageOffset) });
+        if (severity) parameters.set('severity', severity);
+        if (status) parameters.set('status', status);
+        if (query) parameters.set('query', query);
+        return `/projects/${request.params.projectId}/findings?${parameters}`;
+      };
       const created = queryText(request.query.created);
       return reply.type('text/html; charset=utf-8').send(renderFor(request, 'findings.njk', {
         project: projectFor(service, request.params.projectId),
-        findings,
+        findings: page.findings,
+        pagination: {
+          total: page.total,
+          start: page.findings.length ? page.offset + 1 : 0,
+          end: page.findings.length ? page.offset + page.findings.length : 0,
+          previousHref: page.offset > 0 ? pageHref(Math.max(0, page.offset - page.limit)) : null,
+          nextHref: page.nextOffset === null ? null : pageHref(page.nextOffset),
+          firstHref: pageHref(0),
+        },
         filters: { severity, status, query },
         notice: created === '1'
           ? 'Proyecto registrado desde el directorio seleccionado.'
@@ -466,7 +516,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     const project = projectFor(service, request.params.projectId);
     return reply.type('text/html; charset=utf-8').send(renderFor(request, 'finding-new.njk', {
       project,
-      form: { idempotencyKey: randomUUID(), severity: 'medium' },
+      form: { idempotencyKey: randomUUID(), severity: 'unclassified' },
       duplicates: null,
     }));
   });
@@ -496,14 +546,14 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
         idempotencyKey: text(request.body, 'idempotencyKey'),
         title: text(request.body, 'title'),
         description: text(request.body, 'description'),
-        severity: text(request.body, 'severity') as (typeof SEVERITIES)[number],
+        severity: (text(request.body, 'severity') || 'unclassified') as (typeof SEVERITIES)[number],
         filePath: optionalText(request.body, 'filePath'),
         lineNumber: lineNumber(request.body),
         commitRef: optionalText(request.body, 'commitRef'),
         evidence: text(request.body, 'evidence'),
         recommendation: optionalText(request.body, 'recommendation'),
-        origin: text(request.body, 'origin'),
-      });
+        origin: text(request.body, 'origin').trim() || 'web',
+      }, currentActor(request));
       return reply.redirect(
         `/projects/${request.params.projectId}/findings/${result.finding.id}?created=${result.created ? '1' : '0'}`,
         303,
@@ -516,7 +566,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
     async (request, reply) => {
       const finding = service.getFinding(request.params);
       const notice = request.query.created === '1'
-        ? 'Hallazgo registrado como sospecha. Revísalo antes de confirmarlo.'
+        ? 'Incidencia guardada sin revisar. Puedes retomarla más adelante.'
         : request.query.created === '0'
           ? 'Este envío ya estaba registrado; se muestra el hallazgo existente.'
           : request.query.updated === '1'
@@ -545,7 +595,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
         recommendation: optionalText(request.body, 'recommendation'),
         origin: text(request.body, 'origin'),
         note: optionalText(request.body, 'note'),
-      });
+      }, currentActor(request));
       return reply.redirect(
         `/projects/${request.params.projectId}/findings/${request.params.findingId}?updated=1`,
         303,
@@ -561,7 +611,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
         ...request.params,
         status: text(request.body, 'status') as (typeof FINDING_STATUSES)[number],
         ...(note ? { note } : {}),
-      });
+      }, currentActor(request));
       return reply.redirect(`/projects/${request.params.projectId}/findings/${request.params.findingId}`, 303);
     },
   );
@@ -569,7 +619,7 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
   app.post<{ Params: FindingParams; Body: FormBody }>(
     '/projects/:projectId/findings/:findingId/notes',
     async (request, reply) => {
-      service.addFindingNote({ ...request.params, note: text(request.body, 'note') });
+      service.addFindingNote({ ...request.params, note: text(request.body, 'note') }, currentActor(request));
       return reply.redirect(`/projects/${request.params.projectId}/findings/${request.params.findingId}`, 303);
     },
   );
@@ -582,9 +632,48 @@ export function buildWebApp({ service, directories, port = 3300 }: WebAppOptions
       message: 'La página que buscas no existe en este cuaderno.',
     })));
 
-  app.setErrorHandler(async (error, _request, reply) => {
+  app.setErrorHandler(async (error, request, reply) => {
     if (error instanceof AppError) {
       const publicError = publicErrors[error.code];
+      if (request.method === 'POST' && (
+        error.code === 'VALIDATION_ERROR' || error.code === 'TERMINAL_NOTE_REQUIRED'
+        || error.code === 'NO_STATUS_CHANGE' || error.code === 'IDEMPOTENCY_CONFLICT'
+      )) {
+        const route = request.routeOptions.url;
+        const params = request.params as Partial<FindingParams>;
+        const body = request.body as FormBody;
+        const fields = error.code === 'TERMINAL_NOTE_REQUIRED' ? ['note']
+          : error.code === 'NO_STATUS_CHANGE' ? ['status'] : Object.keys(error.fieldErrors ?? {});
+        const feedback = {
+          formError: { message: publicError.message, code: error.code },
+          fieldErrors: Object.fromEntries(fields.map((field) => [field, fieldHints[field] ?? 'Revisa este campo.'])),
+        };
+        // Only known form fields from our own routes are returned. Parser errors and invalid
+        // identities still use the generic error page; templates escape all draft content.
+        try {
+          if (route === '/projects/:projectId/findings' || route === '/projects/:projectId/findings/precheck') {
+            const project = projectFor(service, params.projectId!);
+            return reply.code(publicError.status).type('text/html; charset=utf-8').send(renderFor(request, 'finding-new.njk', {
+              project, form: findingFormValues(body), duplicates: null, ...feedback,
+            }));
+          }
+          const sections: Record<string, string> = {
+            '/projects/:projectId/findings/:findingId/edit': 'edit',
+            '/projects/:projectId/findings/:findingId/status': 'status',
+            '/projects/:projectId/findings/:findingId/notes': 'note',
+          };
+          const section = route ? sections[route] : undefined;
+          if (section) {
+            const finding = service.getFinding({ projectId: params.projectId!, findingId: params.findingId! });
+            return reply.code(publicError.status).type('text/html; charset=utf-8').send(renderFor(request, 'finding-detail.njk', {
+              project: projectFor(service, finding.projectId), finding,
+              [`${section}Form`]: findingFormValues(body), formSection: section, ...feedback,
+            }));
+          }
+        } catch {
+          // A missing project/finding cannot host a recoverable form.
+        }
+      }
       return reply.code(publicError.status).type('text/html; charset=utf-8').send(render('error.njk', {
         title: publicError.title,
         message: publicError.message,
