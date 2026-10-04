@@ -181,6 +181,19 @@ export class SecurityInboxRepository {
     `).run(project);
   }
 
+  findProjectByRepositoryReference(repositoryReference: string): Project | undefined {
+    const row = this.database.prepare(
+      'SELECT * FROM projects WHERE repository_reference = ? ORDER BY created_at, id LIMIT 1',
+    ).get(repositoryReference) as ProjectRow | undefined;
+    return row ? toProject(row) : undefined;
+  }
+
+  setProjectRepositoryReference(projectId: string, repositoryReference: string, updatedAt: string): void {
+    this.database.prepare(
+      'UPDATE projects SET repository_reference = ?, updated_at = ? WHERE id = ?',
+    ).run(repositoryReference, updatedAt, projectId);
+  }
+
   findProjectByDirectoryPath(directoryPath: string): Project | undefined {
     const row = this.database.prepare(
       'SELECT * FROM projects WHERE directory_path = ?',

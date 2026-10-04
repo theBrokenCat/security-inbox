@@ -45,8 +45,8 @@ Reinicia o recarga el cliente después de guardar la configuración. La conexió
 
 Flujo recomendado para agentes:
 
-1. `list_projects` y comparar `directoryPath`.
-2. Si falta y la carpeta está en el equipo del agente, `register_project` con su `directoryPath` absoluto y `external: true`. Para carpetas montadas en el servidor, alta normal y navegación opcional. Los reintentos devuelven el mismo proyecto.
+1. Si la carpeta es un clon de git, `list_projects` con `repositoryReference` (la salida de `git remote get-url origin`, en cualquier forma); si no, `list_projects` y comparar `directoryPath`.
+2. Si falta y la carpeta está en el equipo del agente, `register_project` con su `directoryPath` absoluto, `external: true` y, si es un clon, `repositoryReference`. El mismo repositorio clonado en otra máquina u otra ruta resuelve al mismo proyecto; las credenciales de la URL se descartan antes de guardar. Para carpetas montadas en el servidor, alta normal y navegación opcional. Los reintentos devuelven el mismo proyecto.
 3. Conservar el `projectId`, buscar posibles duplicados y gestionar detalle, edición, estado y notas con ese ID.
 
 ## Captura breve y revisión posterior

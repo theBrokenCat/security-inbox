@@ -57,6 +57,8 @@ export type ProjectSummary = Project & {
 export type ListProjectsInput = {
   scope?: ProjectScope;
   ownerId?: string;
+  /** Any git remote spelling; matched after normalisation (see repository-reference.ts). */
+  repositoryReference?: string;
 };
 export type CreateProjectInput = {
   name: string;
@@ -68,6 +70,7 @@ export type ResolvedProjectDirectoryInput = {
   name: string;
   description: string;
   directoryPath: string;
+  repositoryReference?: string | null;
   ownerId: string;
 };
 export type RegisterProjectDirectoryResult = { project: Project; created: boolean };
@@ -91,6 +94,7 @@ export type DirectorySelection = {
 export type RegisterProjectDirectoryInput = DirectorySelection & {
   external?: boolean;
   description?: string | null;
+  repositoryReference?: string | null;
   ownerId: string;
 };
 

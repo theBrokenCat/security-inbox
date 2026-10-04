@@ -35,6 +35,7 @@ export const transferProjectInputSchema = z.object({
 export const listProjectsInputSchema = z.object({
   scope: projectScopeSchema.optional(),
   ownerId: uuid.optional(),
+  repositoryReference: requiredText(500).optional(),
 }).strict().superRefine((value, context) => {
   if (value.scope === 'mine' && !value.ownerId) {
     context.addIssue({
@@ -56,6 +57,7 @@ export const resolvedProjectDirectoryInputSchema = z.object({
   name: requiredText(120),
   description: requiredText(2_000),
   directoryPath: requiredText(4_096),
+  repositoryReference: optionalText(500),
   ownerId: uuid,
 }).strict();
 
@@ -71,6 +73,7 @@ export const browseProjectDirectoriesInputSchema = z.object({
 export const registerProjectDirectorySelectionSchema = browseProjectDirectoriesInputSchema.safeExtend({
   description: optionalText(2_000),
   external: z.boolean().optional(),
+  repositoryReference: optionalText(500),
 }).superRefine((value, context) => {
   if (value.relativePath === undefined && value.directoryPath === undefined) {
     context.addIssue({ code: 'custom', path: ['directoryPath'], message: 'Select a directory' });

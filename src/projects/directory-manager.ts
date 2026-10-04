@@ -111,6 +111,7 @@ export class ProjectDirectoryManager {
       name: basename(displayPath) || displayPath,
       description: parsed.data.description || `${parsed.data.external ? 'External workspace' : 'Local project'} at ${displayPath}`,
       directoryPath: displayPath,
+      repositoryReference: parsed.data.repositoryReference ?? null,
       ownerId: parsed.data.ownerId,
     });
   }

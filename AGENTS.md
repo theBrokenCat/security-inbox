@@ -54,6 +54,11 @@
 - `SECURITY_INBOX_PROJECTS_ROOT`, si se configura, limita el árbol accesible;
   `SECURITY_INBOX_PROJECTS_DISPLAY_ROOT` es la ruta persistida/visible. Compose
   monta `${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}` read-only.
+- `register_project` y `list_projects` aceptan `repositoryReference` (remoto de git en
+  cualquier forma). `src/core/repository-reference.ts` lo normaliza a `host/ruta`
+  sin credenciales; en el alta gana a `directoryPath`, de modo que el mismo repo en
+  dos máquinas es un solo proyecto, y un proyecto registrado solo por ruta adopta la
+  referencia la primera vez que llega. `createProject` (seed) no normaliza.
 - `register_project` acepta `external: true` con `directoryPath` absoluto para
   carpetas del equipo del agente. Solo registra su identidad, sin explorar ni
   leer esa ruta en el servidor. El agente resuelve sus symlinks antes de enviarla.

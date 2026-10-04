@@ -6,8 +6,10 @@ plataforma compartida está en `arturo-dev:/root/Proyectos/security-inbox` y se
 consulta en `http://192.168.0.130:3300`. MCP conecta por SSH; los datos se guardan
 en el servidor. No hace falta iniciar una plataforma local.
 
-Identifica el proyecto por el `directoryPath` absoluto del workspace, resuelto
-en tu equipo, y conserva su `projectId`; nunca elijas solo por nombre. Si esa
+Identifica el proyecto por su remoto de git (`repositoryReference`, la salida de
+`git remote get-url origin`) si es un clon, o por el `directoryPath` absoluto del
+workspace, resuelto en tu equipo, y conserva su `projectId`; nunca elijas solo por
+nombre. Si esa
 carpeta no está montada en el servidor, `register_project` admite
 `{ "directoryPath": "/ruta/absoluta/del/proyecto", "external": true }`.
 Comprueba brevemente posibles duplicados, guarda título y contexto con una

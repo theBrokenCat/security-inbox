@@ -237,6 +237,7 @@ export function createSecurityInboxMcpServer(
   const emptyInputSchema = z.object({}).strict();
   const listProjectsToolSchema = z.object({
     scope: z.enum(['mine', 'all']).optional(),
+    repositoryReference: z.string().trim().min(1).max(500).optional(),
   }).strict();
   // Normalised through the shared schema so SECURITY_INBOX_USER tolerates the same input the
   // web accepts; an unusable value is treated as unset rather than silently missing its user.
@@ -265,13 +266,16 @@ export function createSecurityInboxMcpServer(
   server.registerTool('list_projects', {
     description:
       'List projects first to identify the correct stable project id and directory path. '
-      + 'Defaults to the projects owned by the configured user; pass scope "all" to see every project.',
+      + 'Defaults to the projects owned by the configured user; pass scope "all" to see every project. '
+      + 'Pass repositoryReference (the output of `git remote get-url origin`, any spelling) to find the project '
+      + 'of that repository whoever registered it and from whichever machine; it then searches every owner.',
     inputSchema: advertisedInput(listProjectsToolSchema),
     outputSchema: listProjectsOutputSchema,
   }, async (input) => handle(listProjectsToolSchema, input, (value) => {
-    const scope = value.scope ?? (configuredSlug ? 'mine' : 'all');
-    if (scope === 'all') return { projects: service.listProjects({ scope: 'all' }) };
-    return { projects: service.listProjects({ scope: 'mine', ownerId: requireOwnerId() }) };
+    const byRepository = value.repositoryReference ? { repositoryReference: value.repositoryReference } : {};
+    const scope = value.scope ?? (configuredSlug && !value.repositoryReference ? 'mine' : 'all');
+    if (scope === 'all') return { projects: service.listProjects({ scope: 'all', ...byRepository }) };
+    return { projects: service.listProjects({ scope: 'mine', ownerId: requireOwnerId(), ...byRepository }) };
   }));
 
   server.registerTool('list_users', {
@@ -294,6 +298,8 @@ export function createSecurityInboxMcpServer(
       'Register a selected directory as a project owned by the configured user; '
       + 'pass its absolute directoryPath or a returned relativePath. Use external: true for a workspace on the agent computer '
       + 'that the inbox server cannot access; it records the path without reading it. Resolve symlinks on the agent first. '
+      + 'Pass repositoryReference (`git remote get-url origin`) whenever the folder is a git clone: the same repository '
+      + 'then resolves to one project across machines and paths, and credentials in the URL are dropped before storing. '
       + 'Its name and stored path are derived automatically.',
     inputSchema: advertisedInput(registerProjectToolSchema),
     outputSchema: registerProjectOutputSchema,

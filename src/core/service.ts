@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 
 import { AppError, validationError } from './errors.js';
+import { normalizeRepositoryReference } from './repository-reference.js';
 import { assertNoSecrets } from './secrets.js';
 import type {
   CreateProjectInput,
@@ -157,23 +158,41 @@ export class SecurityInboxService {
     return project;
   }
 
+  // The repository reference is the identity shared by every clone of a repository, so it wins
+  // over the path: a second machine registering the same remote gets the existing project.
+  // A project first registered by path alone adopts the reference the first time one arrives.
   registerProjectDirectory(input: {
     name: string;
     description: string;
     directoryPath: string;
+    repositoryReference?: string | null;
     ownerId: string;
   }): RegisterProjectDirectoryResult {
     const value = parse(resolvedProjectDirectoryInputSchema, input);
+    const repositoryReference = value.repositoryReference
+      ? normalizeRepositoryReference(value.repositoryReference)
+      : null;
     return this.repository.immediate(() => {
       this.requireUser(value.ownerId);
+      if (repositoryReference) {
+        const sameRepository = this.repository.findProjectByRepositoryReference(repositoryReference);
+        if (sameRepository) return { project: sameRepository, created: false };
+      }
       const existing = this.repository.findProjectByDirectoryPath(value.directoryPath);
-      if (existing) return { project: existing, created: false };
+      if (existing) {
+        if (repositoryReference && existing.repositoryReference === null) {
+          const updatedAt = timestampAfter(existing.updatedAt);
+          this.repository.setProjectRepositoryReference(existing.id, repositoryReference, updatedAt);
+          return { project: { ...existing, repositoryReference, updatedAt }, created: false };
+        }
+        return { project: existing, created: false };
+      }
       const now = timestampAfter();
       const project: Project = {
         id: randomUUID(),
         name: value.name,
         description: value.description,
-        repositoryReference: null,
+        repositoryReference,
         directoryPath: value.directoryPath,
         ownerId: value.ownerId,
         createdAt: now,
@@ -214,7 +233,12 @@ export class SecurityInboxService {
   }
 
   listProjects(input: ListProjectsInput = {}): ProjectSummary[] {
-    return this.repository.listProjects(parse(listProjectsInputSchema, input));
+    const value = parse(listProjectsInputSchema, input);
+    const projects = this.repository.listProjects(value);
+    if (!value.repositoryReference) return projects;
+    const wanted = normalizeRepositoryReference(value.repositoryReference);
+    return projects.filter(({ repositoryReference }) =>
+      repositoryReference !== null && normalizeRepositoryReference(repositoryReference) === wanted);
   }
 
   registerFinding(input: RegisterFindingInput, actor: FindingActor | null = null): RegisterFindingResult {
