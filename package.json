@@ -13,7 +13,8 @@
     "web": "tsx src/web/server.ts",
     "mcp": "tsx src/mcp/server.ts",
     "seed": "tsx src/demo/seed.ts",
-    "demo": "tsx src/demo/demo.ts"
+    "demo": "tsx src/demo/demo.ts",
+    "backup": "tsx src/storage/backup-cli.ts"
   },
   "dependencies": {
     "@fastify/formbody": "9.0.0",
