@@ -1,7 +1,9 @@
 name: security-inbox
 
 x-app: &app
-  image: security-inbox:local
+  # Image, data directory and web port default to the shared installation; scripts/verify-demo.sh
+  # points all three at private resources.
+  image: ${SECURITY_INBOX_IMAGE:-security-inbox:local}
   working_dir: /app
   environment:
     SECURITY_INBOX_DB: /app/data/security-inbox.sqlite
@@ -17,7 +19,7 @@ x-app: &app
     SECURITY_INBOX_MCP_TOKENS_FILE: /app/data/mcp-tokens
   volumes:
     - type: bind
-      source: ./data
+      source: ${SECURITY_INBOX_DATA_DIR:-./data}
       target: /app/data
     - type: bind
       source: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}
@@ -30,13 +32,15 @@ services:
     <<: *app
     build:
       context: .
+      args:
+        SECURITY_INBOX_REVISION: ${SECURITY_INBOX_REVISION:-unknown}
     command: ["npm", "run", "seed"]
 
   web:
     <<: *app
     command: ["npm", "run", "web"]
     ports:
-      - "${SECURITY_INBOX_WEB_BIND:-127.0.0.1}:3300:3300"
+      - "${SECURITY_INBOX_WEB_BIND:-127.0.0.1}:${SECURITY_INBOX_WEB_PORT:-3300}:3300"
     restart: unless-stopped
     healthcheck:
       test:

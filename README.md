@@ -234,10 +234,13 @@ Para repetir el recorrido completo de forma segura:
 ./scripts/verify-demo.sh
 ```
 
-El script construye solo `app`, ejecuta la suite dentro de la imagen, siembra
-datos, comprueba la web en loopback, cierra stdin del MCP, verifica stdout sin
-banners y repite `npm run demo` antes y después de reiniciar `web`. Hace cleanup
-de contenedores y red, pero conserva `./data`.
+El script construye `app` con una etiqueta privada, ejecuta la suite dentro de la
+imagen, siembra una base sintética, comprueba la web en
+`127.0.0.1:${SECURITY_INBOX_VERIFY_PORT:-3390}`, cierra stdin del MCP, verifica stdout
+sin banners y repite `npm run demo` antes y después de reiniciar `web`. Todo ocurre en
+una raíz temporal privada y un proyecto Compose propio: no lee `./data` ni `.env`, y
+solo borra sus recursos tras terminar bien; si falla, los conserva para diagnosticar.
+Ver [docs/deployment.md](docs/deployment.md#verificar-la-demo-sin-tocar-la-instalación).
 
 ## Flujo operativo completo
 

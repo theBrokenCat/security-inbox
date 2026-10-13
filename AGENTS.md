@@ -9,6 +9,17 @@
   y MCP usa `docker compose run --rm -T mcp` sobre `node dist/src/mcp/server.js`.
   Las pruebas usan `app sh scripts/test-container.sh` para compilar en `/tmp`
   sin cambiar los permisos del código de la imagen.
+  En el checkout central, `docker compose run ... app` monta el `data/` compartido: allí
+  no se siembra ni se ejecuta la demo.
+- Recorrido E2E: `scripts/verify-demo.sh` (puerto `SECURITY_INBOX_VERIFY_PORT`, 3390 por
+  defecto) usa raíz, imagen, proyecto Compose y puerto privados mediante
+  `SECURITY_INBOX_IMAGE`, `SECURITY_INBOX_DATA_DIR` y `SECURITY_INBOX_WEB_PORT`, cuyos
+  valores por defecto son los de la instalación compartida. Nunca toca `data/`.
+- Copias: `scripts/backup.sh daily|pre-update|status` usa la API de backup de SQLite en la
+  imagen, sin migrar la base, hacia `backups/sqlite`; `restore` solo escribe en una ruta
+  nueva. Antes de actualizar, construir la candidata con otra `SECURITY_INBOX_IMAGE`:
+  `docker compose build app` a secas reetiqueta la imagen que abren las sesiones MCP.
+  Procedimientos en `docs/deployment.md`.
 
 ## Arquitectura
 

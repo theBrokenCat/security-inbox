@@ -1,0 +1,15 @@
+# Daily consistent copy of the central inbox on arturo-dev. Install it with the timer of the
+# same name; a failed run shows in `systemctl --failed` and `journalctl -u security-inbox-backup`.
+[Unit]
+Description=Security Inbox daily SQLite backup
+Documentation=file:///root/Proyectos/security-inbox/docs/deployment.md
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/Proyectos/security-inbox
+# The Docker CLI reads its configuration from HOME, which system units do not set.
+Environment=HOME=/root
+ExecStart=/root/Proyectos/security-inbox/scripts/backup.sh daily
+TimeoutStartSec=15min

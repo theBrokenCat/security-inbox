@@ -108,3 +108,20 @@ y la corrección se retoman cuando el usuario las pide; no se lanzan agentes aut
 - [x] Verificar carpetas fuera del directorio de arranque, symlinks, rutas no disponibles y montaje Docker.
 - [x] Pasar 114 pruebas, typecheck, build y validación de skill con Node 24.
 - [x] Activar la web sin raíz de proyectos predefinida y verificar el selector en Chrome.
+
+---
+
+## Mantenimiento y seguridad local — 2026-10-13
+
+Plan y estado canónico en [mantenimiento y seguridad local](../docs/plans/2026-10-13-mantenimiento-y-seguridad-local.md#estado-de-ejecución)
+(issue #6, rama `feat/6-local-maintenance`, base `4c7f731`).
+
+- [x] Paso 1: versión, imagen, esquema v5 y exposición de 3300/3301 registrados sin secretos.
+- [x] Paso 2: avisos de dependencias resueltos; audit 0, suite, typecheck y build.
+- [x] Paso 3: copia consistente, retención y restauración ensayadas con fixtures sintéticas.
+- [x] Paso 4: `verify-demo.sh` aislado; stack de referencia intacto en éxito, colisión e interrupción.
+- [x] Paso 5: rutina mensual, exposición y recuperación documentadas.
+- [ ] Revisión independiente del diff final.
+- [ ] Aprobación del diff, commit, push y PR.
+- [ ] Merge (requiere autorización; el repositorio no tiene CI).
+- [ ] Despliegue en arturo-dev, activación de copias y ensayo con una copia real.

@@ -22,6 +22,8 @@ test('Docker image includes runtime assets while only data is writable', () => {
   expect(dockerfile).toContain('COPY AGENTS.md ./AGENTS.md');
   expect(dockerfile).toContain('COPY tasks/lessons.md ./tasks/lessons.md');
   expect(dockerfile).toContain('COPY scripts/verify-demo.sh ./scripts/verify-demo.sh');
+  expect(dockerfile).toContain('COPY scripts/backup.sh ./scripts/backup.sh');
+  expect(dockerfile).toContain('LABEL org.opencontainers.image.revision=$SECURITY_INBOX_REVISION');
   expect(dockerfile).toContain('chown node:node /app/data');
   expect(dockerfile).not.toContain('chown -R node:node /app');
   expect(dockerfile).toContain('USER node');
@@ -36,7 +38,8 @@ test('Compose defaults to loopback and supports an explicit web bind with stdio 
   expect(mcp).not.toContain('build:');
   expect(mcp).toContain('command: ["node", "dist/src/mcp/server.js"]');
   expect(mcp).not.toContain('npm run mcp');
-  expect(compose).toContain('source: ./data');
+  expect(compose).toContain('source: ${SECURITY_INBOX_DATA_DIR:-./data}');
+  expect(compose).toContain('image: ${SECURITY_INBOX_IMAGE:-security-inbox:local}');
   expect(compose).toContain('SECURITY_INBOX_PROJECTS_ROOT: /projects');
   expect(compose).toContain(
     'SECURITY_INBOX_PROJECTS_DISPLAY_ROOT: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}',
@@ -44,7 +47,9 @@ test('Compose defaults to loopback and supports an explicit web bind with stdio 
   expect(compose).toContain('source: ${SECURITY_INBOX_PROJECTS_HOST_ROOT:-/root/Proyectos}');
   expect(compose).toContain('target: /projects');
   expect(compose).toContain('read_only: true');
-  expect(web.match(/^\s+- "[^\"]+"$/gm)).toEqual(['      - "${SECURITY_INBOX_WEB_BIND:-127.0.0.1}:3300:3300"']);
+  expect(web.match(/^\s+- "[^\"]+"$/gm)).toEqual([
+    '      - "${SECURITY_INBOX_WEB_BIND:-127.0.0.1}:${SECURITY_INBOX_WEB_PORT:-3300}:3300"',
+  ]);
   expect(web).toContain('restart: unless-stopped');
   expect(mcp).not.toMatch(/\n\s+ports:/);
   const mcpHttp = serviceBlock('mcp-http');
@@ -64,4 +69,41 @@ test('MCP verification allows Compose stderr while rejecting server failures', (
     '! grep -Fq "Security Inbox MCP failed to start" "$mcp_stderr"',
   );
   expect(verifyDemo).not.toContain('test ! -s "$mcp_stderr"');
+});
+
+test('demo verification runs only on its own private Compose project, data and port', () => {
+  const composeCalls = verifyDemo.match(/docker compose[^\n]*/g) ?? [];
+  // One helper pins every Compose call to the private project, the tracked file and an empty
+  // env file, so neither COMPOSE_FILE nor the repository .env can redirect it to the real stack.
+  expect(composeCalls).toEqual([
+    'docker compose --project-name "$project" --project-directory "$repo_root" \\',
+  ]);
+  expect(verifyDemo).toContain('--file "$repo_root/compose.yaml" --env-file "$env_file" "$@"');
+  expect(verifyDemo).not.toMatch(/mkdir -p data|\.\/data/);
+  expect(verifyDemo).toContain('export SECURITY_INBOX_DATA_DIR="$root/data"');
+  expect(verifyDemo).toContain('export SECURITY_INBOX_PROJECTS_HOST_ROOT="$root/projects"');
+  expect(verifyDemo).toContain('export SECURITY_INBOX_IMAGE="$image"');
+  expect(verifyDemo).toContain('export SECURITY_INBOX_WEB_PORT="$port"');
+  expect(verifyDemo).toMatch(/3300 \| 3301\)/);
+  expect(verifyDemo).toContain('test "$published" = "127.0.0.1:$port"');
+});
+
+test('demo verification removes only its own resources, and only after a passing run', () => {
+  expect(verifyDemo).toContain('compose down --volumes --remove-orphans');
+  expect(verifyDemo).toContain('docker image rm "$image"');
+  expect(verifyDemo).not.toMatch(/docker (rm|stop|kill|system|volume|network) /);
+  const [passed, rest] = verifyDemo.split('if [ "$status" = passed ]; then')[1]!.split('\n  else\n');
+  const failed = rest!.split('\n  fi\n')[0];
+  expect(passed).toContain('rm -rf -- "$root"');
+  expect(failed).toContain('compose stop');
+  expect(failed).not.toMatch(/rm |down|image rm/);
+  expect(verifyDemo.indexOf('status=passed')).toBeGreaterThan(verifyDemo.indexOf('test "$after_id" = "$before_id"'));
+});
+
+test('backup script copies through the application image without network', () => {
+  const backup = readFileSync('scripts/backup.sh', 'utf8');
+  expect(backup).toContain('docker run --rm --network none --read-only --tmpfs /tmp');
+  expect(backup).toContain('dist/src/storage/backup-cli.js backup --kind "$command"');
+  expect(backup).toContain('target=/backups,readonly');
+  expect(backup).not.toMatch(/\bcp\b|rsync|sqlite3 /);
 });
