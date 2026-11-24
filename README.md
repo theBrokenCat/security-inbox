@@ -96,7 +96,8 @@ stateDiagram-v2
 3. **Fix and prove it.** Status moves through *in progress* to *resolved*. Closing
    requires a note with the verification: the test, the reproduction, the commit.
 4. **Keep the record.** Every creation, edit, status change and note is stored
-   append-only with its author, so the history survives even if the user is deleted.
+   append-only, together with the user who made it when one is configured. That
+   attribution survives even if the user is later deleted.
 
 The repository ships an [agent skill](skills/security-inbox/SKILL.md) that teaches agents
 exactly this etiquette: check for duplicates, record, carry on, and close only with evidence.
@@ -108,7 +109,7 @@ exactly this etiquette: check for duplicates, record, carry on, and close only w
 | **MCP server** | Ten tools to register, list, page through, read, update, annotate and close findings. Agents can also register projects and browse the server's folders. |
 | **Web UI** | Project grid sorted by latest activity, severity bars, filters and pagination. Forms keep your draft when validation fails. Light and dark themes. |
 | **Read access without MCP** | Read-only JSON API (`/api/projects…`) and a Markdown export per project. |
-| **People** | Lightweight users for attribution: every project has an owner, and every history entry has an author. |
+| **People** | Lightweight users for attribution: every project has an owner, and the history records who made each change. |
 | **Secret filter** | Text that looks like a credential is rejected, never stored or echoed back: private keys, cloud and API tokens, `user:password@` URLs, `PASSWORD=…` assignments. |
 | **Backups** | Consistent copies through SQLite's online backup API, each with a manifest (SHA-256, schema, row counts). Retention runs on a systemd timer, and restores only ever write to a new path. |
 | **Migrations** | Five schema versions, each upgrade transactional and checked for foreign-key integrity. IDs, retry keys and history are preserved. |
@@ -126,9 +127,10 @@ is built defensively:
   and origin are configured. The container runs as an unprivileged user with read-only
   application code.
 - **HTTP MCP tokens.** One token per client; only their SHA-256 digests are kept in
-  memory. Size limits, timeouts and the token check all run before any body is read.
-- **Safe outputs.** The Markdown export is made inert: no HTML, links or images can be
-  smuggled through a finding. The secret detector runs in linear time, so oversized
+  memory. Path, Origin, token and declared size are checked before any body is read.
+  A 1 MiB cap and request timeouts bound the rest.
+- **Safe outputs.** The Markdown export is made inert: no raw HTML or link and image
+  syntax can be smuggled through a finding, while bare URLs stay visible as text. The secret detector runs in linear time, so oversized
   input cannot stall the server.
 - **An honest trust model.** There is deliberately no login: it is meant for a small team
   or a home lab behind a VPN, and users are *attribution, not authorisation*. That
@@ -168,6 +170,10 @@ after `npm run build`:
 }
 ```
 
+`SECURITY_INBOX_USER` is the slug of an existing user, created in the web UI. `demo`
+exists after `npm run seed` on an empty database. That user becomes the author of
+whatever the agent records.
+
 For a shared server, Docker Compose runs the web UI and the MCP server. Remote agents
 connect with `ssh -T <server> /path/to/security-inbox/scripts/mcp-stdio.sh`; that
 launcher removes its container however the session ends. Setup, backups and
@@ -187,7 +193,7 @@ src/
 ├── storage/    SQLite schema and migrations, queries, backups
 ├── web/        Fastify app, read-only JSON API, Markdown export
 ├── mcp/        MCP server over stdio and streamable HTTP, client tokens
-└── projects/   the only module allowed to touch the filesystem
+└── projects/   the only module that explores project folders
 views/          Nunjucks templates
 skills/         agent skill describing how to use the inbox
 scripts/        stdio launcher, backups, end-to-end verification in Docker
