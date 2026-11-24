@@ -77,25 +77,29 @@ nota de cierre con la verificación. La plataforma no programa ni lanza agentes.
 La instalación compartida vive en `arturo-dev:/root/Proyectos/security-inbox`.
 Su web es `http://192.168.0.130:3300`. Los clientes no necesitan Node, Docker,
 una copia del repositorio ni una base local: solo SSH con acceso a `arturo-dev`.
-Compose crea un contenedor MCP efímero que comparte el SQLite del servidor.
-Mantén stdio sin TTY y usa Node directamente para reservar stdout al protocolo.
+Cada sesión arranca un contenedor MCP efímero que comparte el SQLite del servidor,
+mediante `scripts/mcp-stdio.sh`: lanza `docker compose run --rm -T mcp` con un nombre
+de contenedor elegido de antemano y, termine como termine la sesión, borra exactamente
+ese contenedor. Con `docker compose run --rm` a secas, un cliente que se rinde mientras
+el contenedor aún se crea (host cargado, límite de 30 s) deja contenedores en `Created`
+para siempre (issue #5). El script mantiene stdio sin TTY y no escribe nada propio en
+stdout, reservado al protocolo.
 
 Configuración en `~/.codex/config.toml` de Codex:
 
 ```toml
 [mcp_servers.security-inbox]
 command = "ssh"
-args = ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "arturo-dev", "docker", "compose", "-f", "/root/Proyectos/security-inbox/compose.yaml", "run", "--rm", "-T", "mcp"]
+args = ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "arturo-dev", "/root/Proyectos/security-inbox/scripts/mcp-stdio.sh"]
 startup_timeout_sec = 30
 ```
 
 Se puede registrar mediante `codex mcp add security-inbox -- ssh -T -o
-BatchMode=yes -o ConnectTimeout=10 arturo-dev docker compose -f
-/root/Proyectos/security-inbox/compose.yaml run --rm -T mcp` y ajustar el tiempo
-inicial en el TOML. Véase la [configuración oficial de MCP en Codex](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+BatchMode=yes -o ConnectTimeout=10 arturo-dev
+/root/Proyectos/security-inbox/scripts/mcp-stdio.sh` y ajustar el tiempo inicial en el TOML. Véase la [configuración oficial de MCP en Codex](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-En Codex ejecutado dentro de arturo-dev, usa `command = "docker"` y
-`args = ["compose", "-f", "/root/Proyectos/security-inbox/compose.yaml", "run", "--rm", "-T", "mcp"]`, sin SSH a sí mismo.
+En Codex ejecutado dentro de arturo-dev, usa `command = "/root/Proyectos/security-inbox/scripts/mcp-stdio.sh"` y
+`args = []`, sin SSH a sí mismo.
 
 Para clientes con `mcpServers`:
 
@@ -104,7 +108,7 @@ Para clientes con `mcpServers`:
   "mcpServers": {
     "security-inbox": {
       "command": "ssh",
-      "args": ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "arturo-dev", "docker", "compose", "-f", "/root/Proyectos/security-inbox/compose.yaml", "run", "--rm", "-T", "mcp"]
+      "args": ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "arturo-dev", "/root/Proyectos/security-inbox/scripts/mcp-stdio.sh"]
     }
   }
 }
@@ -112,7 +116,8 @@ Para clientes con `mcpServers`:
 
 El usuario configurado en Compose es `thebrokencat`, que ya existe en la base.
 Para otro usuario, créalo desde la web y añade `-e SECURITY_INBOX_USER=su-slug`
-entre `-T` y `mcp` en el comando Compose. Esa variable se resuelve en el proceso
+como argumentos tras la ruta del script (`"-e", "SECURITY_INBOX_USER=su-slug"`); el
+script los pasa a `docker compose run` antes del servicio. Esa variable se resuelve en el proceso
 remoto; una variable local no se transmite automáticamente por SSH.
 
 Si el repositorio está en el equipo del agente y no está montado en el servidor,

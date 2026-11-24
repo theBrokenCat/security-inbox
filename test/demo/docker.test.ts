@@ -23,6 +23,11 @@ test('Docker image includes runtime assets while only data is writable', () => {
   expect(dockerfile).toContain('COPY tasks/lessons.md ./tasks/lessons.md');
   expect(dockerfile).toContain('COPY scripts/verify-demo.sh ./scripts/verify-demo.sh');
   expect(dockerfile).toContain('COPY scripts/backup.sh ./scripts/backup.sh');
+  // Its tests run inside the image too (scripts/test-container.sh copies scripts/).
+  expect(dockerfile).toContain('COPY scripts/mcp-stdio.sh ./scripts/mcp-stdio.sh');
+  // node_modules in the image is root-owned: Vitest's module cache must go elsewhere.
+  expect(readFileSync('scripts/test-container.sh', 'utf8'))
+    .toContain('--fsModuleCachePath "$test_workspace/.vitest-cache"');
   expect(dockerfile).toContain('LABEL org.opencontainers.image.revision=$SECURITY_INBOX_REVISION');
   expect(dockerfile).toContain('chown node:node /app/data');
   expect(dockerfile).not.toContain('chown -R node:node /app');
