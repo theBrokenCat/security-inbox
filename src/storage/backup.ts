@@ -61,6 +61,46 @@ function hasTable(database: BetterSqlite3.Database, table: string): boolean {
   return Boolean(database.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?").get(table));
 }
 
+// The tables and columns each schema version introduced (see database.ts). A copy must hold
+// all of them up to the version it declares: a file with the right user_version but missing
+// tables would otherwise pass as a healthy copy and push real ones out of retention.
+const schemaRequirements: Array<{ since: number; table: string; columns: string[] }> = [
+  { since: 1, table: 'projects', columns: ['id', 'name', 'description', 'repository_reference', 'created_at', 'updated_at'] },
+  {
+    since: 1,
+    table: 'findings',
+    columns: [
+      'id', 'project_id', 'idempotency_key', 'request_fingerprint', 'title', 'normalized_title', 'description',
+      'severity', 'status', 'file_path', 'line_number', 'commit_ref', 'evidence', 'recommendation', 'origin',
+      'created_at', 'updated_at',
+    ],
+  },
+  {
+    since: 1,
+    table: 'finding_events',
+    columns: ['id', 'finding_id', 'kind', 'from_status', 'to_status', 'note', 'changes_json', 'created_at'],
+  },
+  { since: 2, table: 'projects', columns: ['directory_path'] },
+  { since: 3, table: 'users', columns: ['id', 'slug', 'name', 'color', 'created_at'] },
+  { since: 3, table: 'projects', columns: ['owner_id'] },
+  { since: 4, table: 'finding_events', columns: ['actor_slug', 'actor_name'] },
+  { since: 5, table: 'findings', columns: ['external_ref'] },
+];
+
+function assertSchemaComplete(database: BetterSqlite3.Database, schemaVersion: number, name: string): void {
+  for (const { since, table, columns } of schemaRequirements) {
+    if (since > schemaVersion) continue;
+    const present = new Set(
+      (database.prepare('SELECT name FROM pragma_table_info(?)').all(table) as Array<{ name: string }>)
+        .map((column) => column.name),
+    );
+    const missing = columns.find((column) => !present.has(column));
+    if (present.size === 0 || missing) {
+      throw new Error(`${name} lacks ${present.size === 0 ? table : `${table}.${missing}`}, required by schema version ${since}`);
+    }
+  }
+}
+
 // users only exists from schema version 3, so an older copy counts it as empty.
 function countRows(database: BetterSqlite3.Database, table: string): number {
   if (!hasTable(database, table)) return 0;
@@ -82,6 +122,7 @@ export function checkSnapshot(path: string): SnapshotCheck {
     if (schemaVersion < 1 || !hasTable(database, 'projects')) {
       throw new Error(`${basename(path)} is not a Security Inbox database`);
     }
+    assertSchemaComplete(database, schemaVersion, basename(path));
     return {
       schemaVersion,
       counts: {

@@ -6,7 +6,9 @@
 - Verificar: `npm test`, `npm run typecheck`, `npm run build`.
 - Demo: `npm run seed` y `npm run demo`.
 - Docker: solo `app` declara `build`; seed/tests usan `docker compose run --rm -T app ...`
-  y MCP usa `docker compose run --rm -T mcp` sobre `node dist/src/mcp/server.js`.
+  y los clientes MCP stdio lanzan `scripts/mcp-stdio.sh`, que ejecuta
+  `docker compose run --rm -T --name <sesión> mcp` sobre `node dist/src/mcp/server.js` y
+  borra ese contenedor por nombre al terminar: `--rm` solo no cubre uno que nunca arrancó.
   Las pruebas usan `app sh scripts/test-container.sh` para compilar en `/tmp`
   sin cambiar los permisos del código de la imagen.
   En el checkout central, `docker compose run ... app` monta el `data/` compartido: allí
@@ -17,7 +19,8 @@
   valores por defecto son los de la instalación compartida. Nunca toca `data/`.
 - Copias: `scripts/backup.sh daily|pre-update|status` usa la API de backup de SQLite en la
   imagen, sin migrar la base, hacia `backups/sqlite`; `restore` solo escribe en una ruta
-  nueva. Antes de actualizar, construir la candidata con otra `SECURITY_INBOX_IMAGE`:
+  nueva. Una copia solo es válida si tiene todas las tablas y columnas de su versión.
+  Antes de actualizar, construir la candidata con otra `SECURITY_INBOX_IMAGE`:
   `docker compose build app` a secas reetiqueta la imagen que abren las sesiones MCP.
   Procedimientos en `docs/deployment.md`.
 
@@ -43,7 +46,10 @@
   claves privadas, tokens conocidos, `usuario:clave@` en URLs y asignaciones tipo
   `PASSWORD=valor`. Se rechaza, no se enmascara, y el error nunca repite el valor.
   Prima la precisión: la prosa sobre contraseñas y los marcadores (`<redacted>`,
-  `${VAR}`, `****`) pasan.
+  `${VAR}`, `****`) pasan. Al devolver un borrador tras cualquier error (y en el precheck),
+  la web vacía los campos que parecen credenciales y los señala, en vez de reenviarlos.
+  La web lo aplica a borradores de hasta 1 MiB, así que cada patrón debe ser lineal: un
+  test mide 1 MiB de entradas adversarias.
 - El esquema v5 añade `findings.external_ref` (texto libre, hasta 200) con `ADD
   COLUMN`, sin reconstruir: enlaza el hallazgo con el trabajo que lo sigue fuera
   (una tarea `T-044`, una línea de backlog, una URL). `list_findings` filtra por él
@@ -58,7 +64,10 @@
 - `src/web/read-api.ts` añade a la web una API JSON de solo lectura (`/api/projects…`)
   y `/projects/:id/export.md`. Reutiliza el control de Host y la validación del
   servicio, no escribe y no pide CSRF; sus errores son JSON con los códigos públicos.
-  `scope=mine` lee la cookie: atribución, no permiso.
+  `scope=mine` lee la cookie: atribución, no permiso. La exportación escapa `\`, `[` y `]`
+  además de `<`/`>`: ningún campo abre un enlace, una imagen ni una definición de
+  referencia. Un Host no permitido recibe un 403 mínimo, sin plantilla ni token CSRF
+  (JSON `HOST_NOT_ALLOWED` en `/api/`).
 - `projects.owner_id` es `NOT NULL` con clave foránea a `users`. La migración v3
   reconstruye la tabla; SQLite obliga a hacerlo con `foreign_keys = OFF` para que
   `legacy_alter_table` impida reescribir la clave foránea de `findings`.
@@ -87,8 +96,16 @@
   referencia la primera vez que llega. `createProject` también normaliza. Las
   credenciales se descartan con cualquier esquema o forma (todo lo anterior al último
   `@` de la autoridad) y la referencia y la descripción pasan además por
-  `assertNoSecrets`. Es atribución: el primero que registra una referencia se queda
-  el proyecto, igual que con `directoryPath`; no hay propiedad que verificar.
+  `assertNoSecrets`. Una referencia normalizada que aún contiene `@` (forma no reconocida)
+  se rechaza con `SECRET_DETECTED` en lugar de guardarse. Al abrir la base se reescriben,
+  normalizadas, las referencias guardadas con `@` (tal cual antes de 0c72131), con el mismo
+  id, dueño y fechas, o se dejan en NULL si no queda nada válido, si aún queda un `@` o si
+  otro proyecto ya responde a ese remoto;
+  no es versión de esquema, para que una imagen anterior siga abriendo el archivo. Las ya
+  normalizadas no se tocan, y `listProjects` nunca vuelve a normalizar un `host:puerto/…`
+  guardado: leería el puerto como ruta. Es atribución: el primero que registra
+  una referencia se queda el proyecto, igual que con `directoryPath`; no hay propiedad
+  que verificar.
 - `register_project` acepta `external: true` con `directoryPath` absoluto para
   carpetas del equipo del agente. Solo registra su identidad, sin explorar ni
   leer esa ruta en el servidor. El agente resuelve sus symlinks antes de enviarla.

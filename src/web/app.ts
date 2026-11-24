@@ -6,6 +6,7 @@ import formbody from '@fastify/formbody';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import nunjucks from 'nunjucks';
 
+import { detectSecrets } from '../core/secrets.js';
 import { AppError, type SecurityInboxService } from '../core/service.js';
 import { registerReadApi } from './read-api.js';
 import {
@@ -153,6 +154,9 @@ const publicErrors: Record<AppError['code'], { status: number; title: string; me
   },
 };
 
+const hostDeniedPage = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><title>Solicitud rechazada</title></head>'
+  + '<body><h1>Solicitud rechazada</h1><p>Abre Security Inbox desde una dirección configurada.</p></body></html>\n';
+
 const csp = [
   "default-src 'none'",
   "style-src 'self'",
@@ -187,8 +191,29 @@ const findingFormFields = [
   'lineNumber', 'commitRef', 'externalRef', 'evidence', 'recommendation', 'note', 'status',
 ] as const;
 
-function findingFormValues(body: FormBody): FormBody {
-  return Object.fromEntries(findingFormFields.map((key) => [key, text(body, key)]));
+// A draft goes back to its author to be fixed, but never a value that looks like a credential:
+// the page would carry the secret once more to the browser and to anything that keeps
+// responses. Those fields come back empty and are named in `withheld`.
+function findingFormValues(body: FormBody): { form: FormBody; withheld: string[] } {
+  const withheld: string[] = [];
+  const form = Object.fromEntries(findingFormFields.map((key) => {
+    const value = text(body, key);
+    if (value && detectSecrets(value).length > 0) {
+      withheld.push(key);
+      return [key, ''];
+    }
+    return [key, value];
+  }));
+  return { form, withheld };
+}
+
+const withheldHint = 'Parecía contener un secreto y se ha vaciado: vuelve a escribirlo sin él.';
+
+function draftFieldErrors(fields: readonly string[], withheld: readonly string[]): Record<string, string> {
+  return Object.fromEntries([...new Set([...fields, ...withheld])].map((field) => [
+    field,
+    withheld.includes(field) ? withheldHint : fieldHints[field] ?? 'Revisa este campo.',
+  ]));
 }
 
 const fieldHints: Record<string, string> = {
@@ -352,11 +377,13 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
       .header('referrer-policy', 'no-referrer')
       .header('x-content-type-options', 'nosniff')
       .header('x-frame-options', 'DENY');
+    // An unknown Host can be a DNS-rebinding page reading the answer, so the denial carries
+    // nothing of the application: no layout, no CSRF token, and JSON for the read API.
     if (!request.headers.host || !allowedOrigins.has(request.headers.host)) {
-      return reply.code(403).type('text/html; charset=utf-8').send(render('error.njk', {
-        title: 'Solicitud rechazada',
-        message: 'Abre Security Inbox desde una dirección configurada.',
-      }));
+      if (request.url.startsWith('/api/')) {
+        return reply.code(403).send({ error: { code: 'HOST_NOT_ALLOWED', message: 'Use a configured address.' } });
+      }
+      return reply.code(403).type('text/html; charset=utf-8').send(hostDeniedPage);
     }
   });
 
@@ -547,15 +574,16 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
     '/projects/:projectId/findings/precheck',
     async (request, reply) => {
       const project = projectFor(service, request.params.projectId);
-      const form = request.body;
+      const { form, withheld } = findingFormValues(request.body);
       const duplicates = service.findPossibleDuplicates({
         projectId: request.params.projectId,
-        title: text(form, 'title'),
+        title: text(request.body, 'title'),
       });
       return reply.type('text/html; charset=utf-8').send(renderFor(request, 'finding-new.njk', {
         project,
         form,
         duplicates,
+        ...(withheld.length ? { fieldErrors: draftFieldErrors([], withheld) } : {}),
       }));
     },
   );
@@ -677,12 +705,13 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
       )) {
         const route = request.routeOptions.url;
         const params = request.params as Partial<FindingParams>;
-        const body = request.body as FormBody;
+        const body = (typeof request.body === 'object' && request.body !== null ? request.body : {}) as FormBody;
         const fields = error.code === 'TERMINAL_NOTE_REQUIRED' ? ['note']
           : error.code === 'NO_STATUS_CHANGE' ? ['status'] : Object.keys(error.fieldErrors ?? {});
+        const draft = findingFormValues(body);
         const feedback = {
           formError: { message: publicError.message, code: error.code },
-          fieldErrors: Object.fromEntries(fields.map((field) => [field, fieldHints[field] ?? 'Revisa este campo.'])),
+          fieldErrors: draftFieldErrors(fields, draft.withheld),
         };
         // Only known form fields from our own routes are returned. Parser errors and invalid
         // identities still use the generic error page; templates escape all draft content.
@@ -690,7 +719,7 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
           if (route === '/projects/:projectId/findings' || route === '/projects/:projectId/findings/precheck') {
             const project = projectFor(service, params.projectId!);
             return reply.code(publicError.status).type('text/html; charset=utf-8').send(renderFor(request, 'finding-new.njk', {
-              project, form: findingFormValues(body), duplicates: null, ...feedback,
+              project, form: draft.form, duplicates: null, ...feedback,
             }));
           }
           const sections: Record<string, string> = {
@@ -703,7 +732,7 @@ export function buildWebApp({ service, directories, port = 3300, origin }: WebAp
             const finding = service.getFinding({ projectId: params.projectId!, findingId: params.findingId! });
             return reply.code(publicError.status).type('text/html; charset=utf-8').send(renderFor(request, 'finding-detail.njk', {
               project: projectFor(service, finding.projectId), finding,
-              [`${section}Form`]: findingFormValues(body), formSection: section, ...feedback,
+              [`${section}Form`]: draft.form, formSection: section, ...feedback,
             }));
           }
         } catch {

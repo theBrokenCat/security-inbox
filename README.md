@@ -218,10 +218,11 @@ SECURITY_INBOX_PROJECTS_HOST_ROOT=/ruta/absoluta/Proyectos \
   SECURITY_INBOX_USER=guzman docker compose up -d web
 ```
 
-Para probar MCP por stdio, conserva `-T` para no asignar un pseudo-terminal:
+Para probar MCP por stdio usa el lanzador, que no asigna pseudo-terminal y borra su
+contenedor aunque el cliente abandone antes de que arranque:
 
 ```sh
-docker compose run --rm -T mcp
+scripts/mcp-stdio.sh
 ```
 
 El proceso web recibe `SECURITY_INBOX_CONTAINER=true` y escucha dentro del

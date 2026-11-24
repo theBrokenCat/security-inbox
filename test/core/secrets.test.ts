@@ -71,4 +71,20 @@ describe('secret detection', () => {
       expect((error as Error).message).not.toContain(value);
     }
   });
+
+  // The web scans drafts of any size up to the 1 MiB body limit; a pattern that rescans the
+  // rest of a run from every start would take minutes on these and block the server.
+  test.each(['password_', 'token-', 'eyJ-', 'eyJ', 'secret_x '])('scans 1 MiB of %j in linear time', (unit) => {
+    const value = unit.repeat(Math.ceil(1_048_576 / unit.length));
+    const start = performance.now();
+    detectSecrets(value);
+    expect(performance.now() - start).toBeLessThan(1_500);
+  });
+
+  test('still finds a secret placed after 1 MiB of hostile text', () => {
+    const prefix = 'password_'.repeat(116_509);
+    expect(detectSecrets(`${prefix} DB_PASSWORD=hunter2hunter2`)).toContain('password or key assignment');
+    const jwt = `${'eyJ'}${repeat('h', 12)}.${'eyJ'}${repeat('p', 12)}.${repeat('s', 12)}`;
+    expect(detectSecrets(`${'eyJ-'.repeat(262_144)} ${jwt}`)).toContain('JSON Web Token');
+  });
 });

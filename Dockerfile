@@ -18,6 +18,7 @@ COPY tasks/lessons.md ./tasks/lessons.md
 COPY scripts/verify-demo.sh ./scripts/verify-demo.sh
 COPY scripts/test-container.sh ./scripts/test-container.sh
 COPY scripts/backup.sh ./scripts/backup.sh
+COPY scripts/mcp-stdio.sh ./scripts/mcp-stdio.sh
 RUN npm run build
 
 RUN mkdir -p /app/data && chown node:node /app/data

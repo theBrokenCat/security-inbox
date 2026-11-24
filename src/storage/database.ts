@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 
 import BetterSqlite3 from 'better-sqlite3';
 
+import { isStorableReference, normalizeRepositoryReference } from '../core/repository-reference.js';
 import { userSlugSchema } from '../core/validation.js';
 
 export type SqliteDatabase = InstanceType<typeof BetterSqlite3>;
@@ -287,6 +288,37 @@ function backfillOwnerId(
   return id;
 }
 
+// Before 0c72131, createProject stored the repository reference as typed, so a remote such as
+// https://user:token@host/repo could be kept with its credential and served by every reader.
+// Every stored reference that still contains "@" is rewritten to its normalised form, or set
+// to NULL when that form cannot be stored (empty, too long, control characters, or still an
+// "@": a spelling normalisation does not recognise, which may hide a credential) or is already
+// the remote of another project:
+// exact lookups could not see the old spelling, so that other project is the one
+// register_project has been returning and it stays so; among old spellings the oldest wins.
+// References without "@" are left alone (normalising "host:8443/repo" again would read the
+// port as a path). It runs on every open, not as a schema version, so an older image can still
+// open the file and anything such an image writes is cleaned the next time this one opens it.
+// Project ids, owners and timestamps are kept.
+function dropRepositoryReferenceCredentials(database: SqliteDatabase): void {
+  const select = database.prepare(`
+    SELECT id, repository_reference AS reference FROM projects
+    WHERE instr(repository_reference, '@') > 0 ORDER BY created_at, id
+  `);
+  const pending = () => select.all() as Array<{ id: string; reference: string }>;
+  if (pending().length === 0) return;
+  const taken = database.prepare('SELECT 1 FROM projects WHERE repository_reference = ? AND id != ? LIMIT 1');
+  const update = database.prepare('UPDATE projects SET repository_reference = ? WHERE id = ? AND repository_reference = ?');
+  database.transaction(() => {
+    for (const { id, reference } of pending()) {
+      // isStorableReference mirrors the column's CHECK, so this update cannot fail and stop the
+      // database from opening; whatever it would refuse becomes NULL instead.
+      const cleaned = normalizeRepositoryReference(reference).trim();
+      update.run(isStorableReference(cleaned) && !taken.get(cleaned, id) ? cleaned : null, id, reference);
+    }
+  }).immediate();
+}
+
 export function openDatabase(
   databasePath?: string,
   options: OpenDatabaseOptions = {},
@@ -380,6 +412,7 @@ export function openDatabase(
     }
 
     database.pragma('foreign_keys = ON');
+    dropRepositoryReferenceCredentials(database);
     return database;
   } catch (error) {
     database.close();
