@@ -160,7 +160,7 @@ transporte es HTTP plano: úsalo solo dentro de la red de casa o su VPN.
 Si un cliente no puede lanzar el MCP (por ejemplo, una sesión sin SSH), puede leer por
 HTTP desde la red de casa: `http://192.168.0.130:3300/api/projects`,
 `/api/projects/:id/findings` y `/projects/:id/export.md`. Es solo lectura; registrar y
-cambiar estados sigue siendo cosa del MCP o de la web. Rutas completas en el README.
+cambiar estados sigue siendo cosa del MCP o de la web. Rutas completas en la [guía](guia.md#lectura-sin-mcp).
 
 Para operar o actualizar el servidor, consulta [deployment.md](deployment.md).
 

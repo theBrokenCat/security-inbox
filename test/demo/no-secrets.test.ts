@@ -11,6 +11,7 @@ test('demo sources and operational examples contain no common secret formats', (
     join(root, 'Dockerfile'),
     join(root, 'compose.yaml'),
     join(root, 'README.md'),
+    join(root, 'docs/guia.md'),
     join(root, 'AGENTS.md'),
     join(root, 'tasks/lessons.md'),
     join(root, 'scripts/verify-demo.sh'),

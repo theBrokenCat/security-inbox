@@ -1,0 +1,300 @@
+# Security Inbox — guía de uso y operación
+
+Presentación general en inglés: [README](../README.md).
+
+Bandeja compartida para apuntar fallos de cualquier tipo por proyecto: funcionales, de
+interfaz, calidad o seguridad. Los agentes pueden guardar lo que encuentran
+mientras hacen otra tarea y retomarlo cuando se les pida. Una anotación queda
+sin revisar; guardarla no inicia una investigación ni una corrección. Web y MCP
+usan el mismo servicio y la misma base SQLite. Cada proyecto pertenece a un
+usuario, que sirve para atribuir trabajo y no para restringir el acceso.
+
+## Novedades — 4 de octubre de 2026
+
+Cinco mejoras propuestas por Guzmán, publicadas en `main` (`60f5a96..0c72131`) y
+desplegadas en arturo-dev el mismo día. Detalle en cada commit y en `AGENTS.md`.
+
+- **Filtro de secretos.** Altas, ediciones, notas y notas de cierre que parezcan
+  llevar una contraseña, token o clave se rechazan con `SECRET_DETECTED` (web 422
+  conservando el formulario; MCP nombrando los campos). No se enmascara y el error no
+  repite el valor. Prima la precisión: la prosa sobre contraseñas, el código y los
+  marcadores (`<redacted>`, `${VAR}`, `****`) pasan.
+- **Proyectos identificados por su remoto de git.** `register_project` y
+  `list_projects` aceptan `repositoryReference` (`git remote get-url origin`, en
+  cualquier forma), normalizado a `host/ruta` y siempre sin credenciales. En el alta
+  gana a `directoryPath`: el mismo repositorio en dos máquinas es un solo proyecto, y
+  uno registrado solo por ruta adopta la referencia la primera vez que llega.
+- **Referencia externa en los hallazgos (esquema v5).** `externalRef` enlaza el
+  hallazgo con el trabajo que lo sigue fuera (una tarea `T-044`, una línea de
+  backlog, una URL); se edita en web y MCP y `list_findings` filtra por ella. La
+  migración es un `ADD COLUMN` y los reintentos de hallazgos anteriores siguen siendo
+  idempotentes.
+- **Lectura sin MCP.** API JSON de solo lectura (`/api/projects…`) y exportación
+  Markdown por proyecto (`/projects/:id/export.md`), con el mismo control de Host que
+  la web. Ver «Lectura sin MCP».
+- **MCP por HTTP, opcional.** Perfil Compose `mcp-http` (puerto 3301, loopback por
+  defecto) con las mismas diez herramientas sin SSH ni contenedor por sesión. Un token
+  por cliente fija su usuario; sin token válido no pasa ninguna petición. Va en HTTP
+  plano: solo dentro de la VPN. **No está activado en arturo-dev**; ver
+  [deployment.md](deployment.md).
+
+Antes de publicar pasó una revisión de seguridad (0 críticos, 2 altos y 9 medios,
+todos corregidos en `0c72131` y cubiertos por tests). Verificación: 195/195 tests,
+typecheck y build en el contenedor de Node 24.
+
+**Despliegue en arturo-dev (4-oct, 18:33 UTC).** Copia previa
+`data/backups/before-v5-20261004T183337Z.sqlite`; migración a v5 con los mismos 3
+usuarios, 3 proyectos, 9 hallazgos y 16 eventos e integridad correcta; web sana. En
+el servidor algunos tests se agotaron por tiempo por la carga de otras cargas de
+trabajo (load average 20–31 en 4 núcleos); con plazos amplios pasan salvo
+`opens a new database concurrently from two processes`, cuyas 32 rondas (3–7 s cada
+una con esa carga) no caben en sus 120 s. Volver atrás: restaurar la copia y
+`git checkout 8b5f24e` antes de reconstruir la imagen.
+
+## Plataforma central
+
+La instalación de casa está en **[arturo-dev](http://192.168.0.130:3300)** y guarda
+los datos en `/root/Proyectos/security-inbox/data/security-inbox.sqlite`.
+Los agentes conectan al MCP por SSH; no hace falta ejecutar esta aplicación ni
+mantener SQLite en su equipo. Pueden registrar su workspace local con
+`register_project({ directoryPath: "/ruta/absoluta", external: true })`, aunque
+la carpeta no exista en el servidor. El selector web muestra carpetas del servidor.
+
+La conexión, la skill y las instrucciones para agentes están en
+[docs/mcp-and-skill.md](mcp-and-skill.md); la operación del servidor, en
+[docs/deployment.md](deployment.md). La configuración central atribuye al
+usuario existente `thebrokencat`. El acceso web requiere la red de casa o su VPN.
+
+## Apuntar ahora y retomar después
+
+Solo hacen falta **título y contexto**. Por ejemplo: «Al guardar el perfil con el
+teclado, el foco vuelve al inicio; observado en `src/profile.ts:12`». Archivo,
+línea y commit se añaden cuando se conocen. Gravedad, evidencia, origen y
+recomendación son opcionales: la gravedad empieza en **Sin clasificar**, sin
+asignar un riesgo arbitrario. El agente registra la observación y continúa su
+tarea actual; la investigación y la corrección dependen de una petición posterior.
+
+Web y MCP permiten recuperar toda la bandeja por páginas. `list_findings`
+conserva el array `findings` y devuelve `total`, `limit`, `offset` y `nextOffset`;
+pasa este último como `offset`, manteniendo los filtros, hasta recibir `null`.
+Recoge las páginas antes de modificar incidencias, porque una edición puede
+cambiar el orden. La búsqueda incluye texto, archivo y commit.
+
+El historial registra el usuario de cada creación, edición, cambio de estado o
+nota. La web lo obtiene de `si_user` y MCP de `SECURITY_INBOX_USER`. El autor se
+conserva aunque se elimine después el usuario. `origin` es un dato independiente
+para indicar, por ejemplo, qué agente detectó el fallo; si se omite, los
+adaptadores usan `web` o `mcp`. Una identidad sin configurar aparece sin autor;
+esto sigue siendo atribución, no autorización.
+
+Al validar un formulario, la web conserva el borrador y señala los campos que
+hay que corregir. Los cierres siguen exigiendo una nota con la comprobación.
+La migración al esquema 4 es automática y conserva UUID, claves de reintento y
+el historial anterior; sus autores aparecen como desconocidos.
+
+## MCP por HTTP
+
+Perfil opcional `mcp-http` (puerto 3301): las mismas diez herramientas sin SSH, con
+un token por cliente que fija su usuario. Activación y clientes en
+[deployment.md](deployment.md) y [mcp-and-skill.md](mcp-and-skill.md).
+
+## Lectura sin MCP
+
+Para quien no puede hablar MCP (una sesión que solo tiene navegador o `curl`, un
+script, un panel), la web expone una API JSON de solo lectura con el mismo control de
+Host que las páginas. No escribe nada, así que no necesita token CSRF; `scope=mine`
+lee la misma cookie de usuario que la web.
+
+| Ruta | Devuelve |
+|---|---|
+| `GET /api/projects?scope=all\|mine&repositoryReference=…` | `{ projects }` |
+| `GET /api/projects/:projectId` | `{ project }` con recuentos |
+| `GET /api/projects/:projectId/findings?status&severity&query&externalRef&limit&offset` | página con `nextOffset` |
+| `GET /api/projects/:projectId/findings/:findingId` | `{ finding }` con historial |
+| `GET /projects/:projectId/export.md?status&severity&query&externalRef` | todos los hallazgos en Markdown |
+
+Los errores llegan como `{ "error": { "code", "message" } }` con los mismos códigos
+que el MCP. La exportación recoge todas las páginas antes de escribir, útil para
+versionar una foto de la bandeja dentro del propio repositorio.
+
+## Requisitos e instalación
+
+- Node.js 24 (la imagen usa `node:24-bookworm`).
+- npm y, para el flujo Docker, Docker Compose v2 o posterior.
+
+Con Node local:
+
+```sh
+nvm install 24
+nvm use 24
+npm ci
+```
+
+La base por defecto es `data/security-inbox.sqlite`. Se puede cambiar con
+`SECURITY_INBOX_DB`.
+
+La web registra proyectos seleccionando carpetas. En ejecución nativa puedes
+navegar desde tu carpeta personal, subir de nivel o introducir una ruta completa
+y seleccionar cualquier carpeta a la que tenga acceso el proceso. No necesitas
+colocar los proyectos bajo `security-inbox` ni bajo una carpeta de proyectos fija.
+Si se configura expresamente `SECURITY_INBOX_PROJECTS_ROOT`, limita el árbol
+accesible; Docker mantiene ese límite sobre los directorios montados.
+
+## Usuarios
+
+Cada proyecto tiene un usuario dueño. **No hay inicio de sesión y esto no es
+control de acceso**: la web guarda tu elección en la cookie `si_user`, cambiar de
+usuario es un clic y nadie verifica nada. Security Inbox confía en la red por la
+que llegas — está pensado para un homelab detrás de VPN, sin exposición externa.
+Quien pueda abrir la web puede ponerse cualquier nombre.
+
+Lo que sí aporta: separa tus proyectos de los del resto, atribuye los cambios de
+cada agente configurado y evita que dos personas se pisen el listado.
+
+- La primera visita muestra **¿Quién eres?** y permite crear el primer usuario.
+- El identificador (`slug`) admite minúsculas, números y guiones.
+- La lista de proyectos abre en **Míos** y el conmutador **Todos** enseña el
+  inventario completo con la etiqueta de su dueño.
+- Todos los proyectos aparecen en una sola cuadrícula, ordenados por su última
+  actividad o la de cualquiera de sus hallazgos. El borde de cada tarjeta marca
+  la peor gravedad abierta: crítica en negro, alta en rojo y el resto en su color
+  habitual; los chips mantienen el significado también en texto.
+- `/users` lista quién puede figurar como dueño. Un proyecto se traspasa desde su
+  propia página, y un usuario solo se elimina cuando ya no tiene proyectos: el
+  dueño es obligatorio en la base y nunca puede quedar apuntando a nadie.
+- Los agentes MCP declaran su identidad en `SECURITY_INBOX_USER`. Sin esa
+  variable pueden leer (`list_projects` con `scope: "all"`, `list_users`) pero
+  `register_project` falla con `USER_REQUIRED` en vez de crear un proyecto
+  huérfano.
+
+Si actualizas una base creada antes del esquema 3, define
+`SECURITY_INBOX_DEFAULT_USER` con el slug que hereda los proyectos existentes;
+la migración crea ese usuario y se los asigna. Sobre una base vacía no hace
+falta.
+
+## Comandos locales
+
+```sh
+npm run seed          # dos proyectos y seis hallazgos sintéticos, idempotente
+npm run demo          # seed + alta/retry/transición/historial/reapertura
+npm test
+npm run typecheck
+npm run build
+npm run web
+```
+
+`npm run web` escucha en loopback en ejecución nativa. El seed no inventa
+personas: asigna sus proyectos a `SECURITY_INBOX_USER`, en su defecto al primer
+usuario registrado, y solo crea el usuario `demo` si la base está vacía. Cubre
+las cinco gravedades clasificadas y los cinco estados, conserva los UUID y no duplica eventos al
+repetirse.
+`npm run demo` añade un hallazgo sintético de recorrido y comprueba que el retry
+con `demo-route-fixed-key` devuelve el mismo UUID.
+
+## Docker Compose
+
+La imagen compila con `npm ci` en `node:24-bookworm` y ejecuta como el usuario no
+privilegiado `node`. `./data` se monta con escritura; la raíz de proyectos se
+monta read-only en `/projects`. Compose crea el bridge propio del proyecto y la
+web publica loopback del host por defecto; `SECURITY_INBOX_WEB_BIND` permite una IP explícita y `SECURITY_INBOX_WEB_ORIGIN` declara el origen permitido.
+
+```sh
+mkdir -p data
+# En Linux, si data o un SQLite existente pertenecen a otro usuario:
+# chown -R 1000:1000 data
+docker compose build app
+docker compose run --rm -T app
+SECURITY_INBOX_USER=guzman docker compose up -d web
+curl --fail http://127.0.0.1:3300/
+docker compose ps
+```
+
+`SECURITY_INBOX_USER` es obligatoria la primera vez que se arranca sobre una
+base creada antes del esquema 3: sin ella la migración se detiene en lugar de
+inventar un dueño para los proyectos existentes.
+
+La raíz Docker predeterminada es `/root/Proyectos`. Para otro host:
+
+```sh
+SECURITY_INBOX_PROJECTS_HOST_ROOT=/ruta/absoluta/Proyectos \
+  SECURITY_INBOX_USER=guzman docker compose up -d web
+```
+
+Para probar MCP por stdio usa el lanzador, que no asigna pseudo-terminal y borra su
+contenedor aunque el cliente abandone antes de que arranque:
+
+```sh
+scripts/mcp-stdio.sh
+```
+
+El proceso web recibe `SECURITY_INBOX_CONTAINER=true` y escucha dentro del
+contenedor en `0.0.0.0:3300`; el host publica `127.0.0.1:3300` por defecto. La instalación central conserva su proxy en `192.168.0.130:3300`, usando el override `compose.remote.yaml`. La guía de
+configuración MCP y skill está en [docs/mcp-and-skill.md](mcp-and-skill.md).
+
+Para repetir el recorrido completo de forma segura:
+
+```sh
+./scripts/verify-demo.sh
+```
+
+El script construye `app` con una etiqueta privada, ejecuta la suite dentro de la
+imagen, siembra una base sintética, comprueba la web en
+`127.0.0.1:${SECURITY_INBOX_VERIFY_PORT:-3390}`, cierra stdin del MCP, verifica stdout
+sin banners y repite `npm run demo` antes y después de reiniciar `web`. Todo ocurre en
+una raíz temporal privada y un proyecto Compose propio: no lee `./data` ni `.env`, y
+solo borra sus recursos tras terminar bien; si falla, los conserva para diagnosticar.
+Ver [docs/deployment.md](deployment.md#verificar-la-demo-sin-tocar-la-instalación).
+
+## Flujo operativo completo
+
+1. Arranca `web`, elige quién eres (o crea el usuario), pulsa **Añadir proyecto**
+   y selecciona una carpeta; el nombre y la ubicación se registran
+   automáticamente y el proyecto queda a tu nombre.
+2. Un agente comienza con `list_projects`, que por defecto solo devuelve los
+   proyectos de `SECURITY_INBOX_USER`. Si falta la carpeta, usa
+   `register_project` con su `directoryPath` completo y `external: true` cuando
+   está en su propio equipo. Para carpetas montadas puede navegar y registrar
+   normalmente; después conserva el UUID.
+3. Lista hallazgos, comprueba candidatos parecidos y
+   registra título y contexto con una clave de idempotencia estable. Los detalles
+   pueden completarse después.
+4. Repite la misma petición: debe devolver el mismo UUID y no crear otra fila.
+5. Usa `update_finding`, cambia el estado con una nota cuando corresponda y
+   consulta el detalle para comprobar el historial append-only.
+6. Reinicia `web` y vuelve a conectar MCP; el UUID y los eventos deben seguir en
+   `./data`.
+
+La instalación central se abre directamente en `http://192.168.0.130:3300`.
+Para una instalación que publique solo loopback, el túnel opcional es:
+
+```sh
+ssh -N -L 3300:127.0.0.1:3300 arturo-dev
+```
+
+El destino operativo previsto es `arturo-dev:/root/Proyectos/security-inbox`.
+
+## Limitaciones verificadas
+
+- No incluye autenticación ni despliegue público. El usuario es atribución, no
+  control de acceso: la cookie es editable y nadie comprueba identidades.
+- Las incidencias no tienen dueño propio; cuelgan del proyecto. El historial
+  atribuye cada cambio al usuario configurado y `origin` permite describir la fuente.
+- Las entradas son observaciones pendientes de revisar. La plataforma no inicia
+  detección externa ni correcciones por sí sola.
+- MCP se sirve por stdio y requiere un cliente configurado; `-T` es necesario
+  en Compose para mantener stdout reservado al protocolo.
+- Solo se documenta Node 24, Docker Compose v2 o posterior y el flujo remoto indicado; no se
+  afirma compatibilidad con otros hosts.
+- No se incluyen secretos ni credenciales en fixtures, imagen, Compose o docs.
+- No se siguen symlinks que salgan de la raíz configurada y la web nunca lee el
+  contenido de los archivos del proyecto.
+- La interfaz reserva la escala rojo-naranja-verde para la gravedad; el color de
+  usuario usa tonos aparte para que un dueño nunca se lea como un riesgo.
+- Los iconos son SVG en línea, sin fuentes ni sprites: la CSP es `img-src 'self'`
+  y cualquier recurso externo fallaría en silencio. Son decorativos y el texto
+  que acompañan siempre lleva el significado.
+- El borrado se limita a usuarios sin proyectos. No hay borrado de proyectos ni
+  de hallazgos.
+
+Para apagar el stack: `docker compose down`. La eliminación de `./data` es una
+acción separada y borra la persistencia local.
