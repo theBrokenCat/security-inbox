@@ -25,7 +25,7 @@ import {
   pruneDailyBackups,
   restoreBackup,
 } from '../../src/storage/backup.js';
-import { downgradeFindingsToV3 } from '../support/legacy-v3.js';
+import { downgradeFindingsToV3, downgradeToV2 } from '../support/legacy-v3.js';
 import { testOwnerId } from '../support/owner.js';
 
 const execFileAsync = promisify(execFile);
@@ -382,6 +382,53 @@ describe('checkSnapshot', () => {
     writeFileSync(copy, bytes);
 
     expect(() => checkSnapshot(copy)).toThrow();
+  });
+
+  test('refuses a file whose tables do not match its schema version, before publishing or pruning', async () => {
+    const root = privateRoot();
+    const backupDirectory = join(root, 'backups');
+    const fixture = syntheticInbox(root);
+    fixture.service.close();
+    const good = await createBackup({
+      databasePath: fixture.path, backupDirectory, kind: 'daily', appVersion: 'abc1234', now: new Date('2026-01-01T00:00:00Z'),
+    });
+    const before = readdirSync(backupDirectory).sort();
+
+    const hollow = join(root, 'hollow.sqlite');
+    const database = new BetterSqlite3(hollow);
+    database.exec('CREATE TABLE projects (id TEXT PRIMARY KEY)');
+    database.pragma('user_version = 5');
+    database.close();
+    expect(() => checkSnapshot(hollow)).toThrow(/lacks projects\.name, required by schema version 1/);
+    await expect(createBackup({ databasePath: hollow, backupDirectory, kind: 'daily', appVersion: 'abc1234' }))
+      .rejects.toThrow(/lacks projects\.name/);
+    expect(readdirSync(backupDirectory).sort()).toEqual(before);
+    expect(listBackups(backupDirectory).map(({ file, valid }) => ({ file, valid })))
+      .toEqual([{ file: good.file, valid: true }]);
+
+    // A real v5 file that lost one column is refused too.
+    const truncated = join(root, 'truncated.sqlite');
+    copyFileSync(join(backupDirectory, good.file), truncated);
+    const damaged = new BetterSqlite3(truncated);
+    damaged.exec('DROP INDEX idx_findings_project_external_ref; ALTER TABLE findings DROP COLUMN external_ref;');
+    damaged.close();
+    expect(() => checkSnapshot(truncated)).toThrow(/lacks findings\.external_ref, required by schema version 5/);
+    mkdirSync(join(root, 'restore'));
+    await expect(restoreBackup({ backupPath: truncated, targetPath: join(root, 'restore', 'inbox.sqlite') }))
+      .rejects.toThrow(/external_ref/);
+    expect(readdirSync(join(root, 'restore'))).toEqual([]);
+  });
+
+  test('accepts a genuine schema 2 file, which has no users table yet', () => {
+    const root = privateRoot();
+    const fixture = syntheticInbox(root);
+    fixture.service.close();
+    downgradeToV2(fixture.path);
+
+    expect(checkSnapshot(fixture.path)).toEqual({
+      schemaVersion: 2,
+      counts: { users: 0, projects: 1, findings: 2, findingEvents: 5 },
+    });
   });
 });
 

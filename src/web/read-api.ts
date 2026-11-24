@@ -53,8 +53,15 @@ function allFindings(service: SecurityInboxService, filter: ListFindingsInput): 
 
 // The export is read by Markdown viewers and agents, not by this origin (which serves it with
 // a CSP that runs nothing), so it is made inert: no line breaks of any spelling inside
-// one-line fields, no raw HTML anywhere, and code spans that a backtick cannot close.
+// one-line fields, no raw HTML anywhere, code spans that a backtick cannot close, and no
+// brackets that could open a link, an image or a reference definition: a viewer that loads
+// remote images would otherwise fetch whatever URL a finding names as soon as it is opened.
+// Bare URLs stay as typed, so they remain readable and at most become links to click.
 const lineBreak = /\r\n?|\n/g;
+
+function inert(text: string): string {
+  return text.replace(/([\\[\]])/g, '\\$1').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 function inline(text: string): string {
   return text.replace(lineBreak, ' ').replace(/([\\`*_[\]|])/g, '\\$1').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -65,11 +72,11 @@ function code(text: string): string {
 }
 
 function plain(text: string): string {
-  return text.replace(lineBreak, ' ').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return inert(text.replace(lineBreak, ' '));
 }
 
 function quote(text: string): string {
-  return text.split(lineBreak).map((line) => `> ${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}`).join('\n');
+  return text.split(lineBreak).map((line) => `> ${inert(line)}`).join('\n');
 }
 
 export function findingsMarkdown(project: ProjectSummary, findings: FindingDetail[], generatedAt: string): string {

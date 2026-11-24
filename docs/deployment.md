@@ -106,7 +106,8 @@ recorrido completo, `scripts/verify-demo.sh` (abajo).
   errores, migraciones fallidas y borrados, no la pérdida del disco del contenedor.
 - Nombre `security-inbox-<daily|pre-update>-<UTC>-schema<N>-<versión>.sqlite` y un
   manifiesto `.json` con tamaño, SHA-256, esquema, versión y conteos. La copia se escribe
-  como temporal, pasa `integrity_check` y `foreign_key_check`, queda en un solo archivo
+  como temporal, pasa `integrity_check`, `foreign_key_check` y la comprobación de que
+  tiene todas las tablas y columnas que declara su versión de esquema, queda en un solo archivo
   `0600` y se publica sin sobrescribir nada. El manifiesto va el último: sin manifiesto
   que coincida con sus bytes no hay copia válida.
 - `security-inbox-backup.timer` (`ops/systemd/`) lanza cada día hacia las 03:40
@@ -138,7 +139,7 @@ scripts/backup.sh status
 
 `restore` nunca escribe sobre un archivo existente ni junto a un `-wal`/`-shm`; comprueba
 el manifiesto si existe (las copias manuales no lo tienen), la integridad, las claves
-foráneas y el esquema, y rechaza un esquema más nuevo que el de la imagen. Usa una imagen
+foráneas y el esquema (versión, tablas y columnas), y rechaza un esquema más nuevo que el de la imagen. Usa una imagen
 que admita el esquema de la copia (figura en su nombre). Las copias manuales antiguas
 (`data/backups/before-*.sqlite`) pueden conservar la cabecera WAL: cópialas primero a la
 carpeta privada del ensayo y restaura desde allí, no desde un montaje de solo lectura.
@@ -227,6 +228,30 @@ no cambiaron tras un recorrido correcto ni tras uno interrumpido.
   `127.0.0.1:3301`; `tailscale serve` de `:3300` hacia `127.0.0.1:3301`, «tailnet only»,
   sin funnel.
 - Ensayo de restauración según «Recuperar».
+
+### Sesiones MCP stdio
+
+Los clientes lanzan `scripts/mcp-stdio.sh`, que borra el contenedor de su sesión
+termine como termine. Al instalar el script por primera vez, actualiza antes el checkout
+del servidor y después cambia la configuración de cada cliente (ver
+[mcp-and-skill.md](mcp-and-skill.md)); los clientes que sigan con `docker compose run
+--rm -T mcp` funcionan igual, pero pueden seguir dejando contenedores `Created`.
+
+Contenedores que ya dejó el comando anterior: los que nunca arrancaron o ya terminaron
+se quitan con `prune`, que no toca nada en marcha:
+
+```sh
+docker ps -a --filter label=com.docker.compose.project=security-inbox \
+  --filter label=com.docker.compose.oneoff=True --format '{{.Names}} {{.State}} {{.RunningFor}}'
+docker container prune --filter label=com.docker.compose.project=security-inbox \
+  --filter label=com.docker.compose.oneoff=True --filter until=1h
+```
+
+Un `mcp-run` en marcha puede pertenecer a una sesión viva: antes de pararlo, comprueba
+con `ss -tnp | grep sshd` y `docker top <nombre>` que ningún cliente lo usa, y quítalo
+por su nombre exacto. Para que el servidor detecte antes las conexiones SSH medio
+abiertas, configura `ClientAliveInterval` en `sshd` (hoy 0: solo el keepalive TCP de
+dos horas cierra esas sesiones).
 
 ## MCP por HTTP (opcional)
 

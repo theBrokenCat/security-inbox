@@ -28,3 +28,34 @@ export function downgradeFindingsToV3(path: string): void {
     database.close();
   }
 }
+
+// Rebuilds a version 2 database: projects without owner_id, no users table.
+export function downgradeToV2(path: string): void {
+  downgradeFindingsToV3(path);
+  const legacy = new BetterSqlite3(path);
+  legacy.pragma('foreign_keys = OFF');
+  legacy.exec(`
+    CREATE TABLE projects_v2 (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      repository_reference TEXT,
+      directory_path TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+    INSERT INTO projects_v2 (id, name, description, repository_reference, directory_path, created_at, updated_at)
+      SELECT id, name, description, repository_reference, directory_path, created_at, updated_at FROM projects;
+    DROP TABLE projects;
+  `);
+  legacy.pragma('legacy_alter_table = ON');
+  legacy.exec('ALTER TABLE projects_v2 RENAME TO projects');
+  legacy.pragma('legacy_alter_table = OFF');
+  legacy.exec(`
+    CREATE UNIQUE INDEX idx_projects_directory_path
+      ON projects(directory_path) WHERE directory_path IS NOT NULL;
+    DROP TABLE users;
+  `);
+  legacy.pragma('user_version = 2');
+  legacy.close();
+}

@@ -3,7 +3,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 
 import { AppError, validationError } from './errors.js';
-import { normalizeRepositoryReference } from './repository-reference.js';
+import {
+  matchesRepositoryReference,
+  normalizeRepositoryReference,
+  storableRepositoryReference,
+} from './repository-reference.js';
 import { assertNoSecrets } from './secrets.js';
 import type {
   CreateProjectInput,
@@ -147,7 +151,7 @@ export class SecurityInboxService {
   createProject(input: CreateProjectInput): Project {
     const value = parse(createProjectInputSchema, input);
     const repositoryReference = value.repositoryReference
-      ? normalizeRepositoryReference(value.repositoryReference)
+      ? storableRepositoryReference(value.repositoryReference)
       : null;
     assertNoSecrets({ description: value.description, repositoryReference });
     this.requireUser(value.ownerId);
@@ -178,7 +182,7 @@ export class SecurityInboxService {
   }): RegisterProjectDirectoryResult {
     const value = parse(resolvedProjectDirectoryInputSchema, input);
     const repositoryReference = value.repositoryReference
-      ? normalizeRepositoryReference(value.repositoryReference)
+      ? storableRepositoryReference(value.repositoryReference)
       : null;
     // Normalisation already drops URL credentials; this catches anything left in the path or
     // pasted into the description, which every reader of the inbox sees.
@@ -248,8 +252,8 @@ export class SecurityInboxService {
     const projects = this.repository.listProjects(value);
     if (!value.repositoryReference) return projects;
     const wanted = normalizeRepositoryReference(value.repositoryReference);
-    return projects.filter(({ repositoryReference }) =>
-      repositoryReference !== null && normalizeRepositoryReference(repositoryReference) === wanted);
+    return projects.filter(({ repositoryReference: stored }) =>
+      stored !== null && matchesRepositoryReference(stored, wanted));
   }
 
   registerFinding(input: RegisterFindingInput, actor: FindingActor | null = null): RegisterFindingResult {

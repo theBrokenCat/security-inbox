@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -36,7 +36,8 @@ const protocolErrors: string[] = [];
 let stderr = '';
 
 beforeAll(async () => {
-  tempDirectory = mkdtempSync(join(tmpdir(), 'security-inbox-mcp-'));
+  // Canonical, because the manager returns canonical paths and macOS's TMPDIR is a symlink.
+  tempDirectory = realpathSync(mkdtempSync(join(tmpdir(), 'security-inbox-mcp-')));
   databasePath = join(tempDirectory, 'inbox.sqlite');
   projectsRoot = join(tempDirectory, 'projects');
   mkdirSync(join(projectsRoot, 'Gamma', 'nested'), { recursive: true });

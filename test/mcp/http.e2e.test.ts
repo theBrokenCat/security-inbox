@@ -84,19 +84,20 @@ describe('MCP over HTTP', () => {
     const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${guzmanToken}` };
     const fromPage = await fetch(running.url, { method: 'POST', headers: { ...headers, origin: 'http://evil.example' }, body: '{}' });
     expect(fromPage.status).toBe(403);
-    const huge = await fetch(running.url, { method: 'POST', headers, body: 'x'.repeat(1024 * 1024 + 1) });
-    expect(huge.status).toBe(413);
     const { port } = new URL(running.url);
-    const malformed = await new Promise<string>((resolve, reject) => {
-      const socket = tcpConnect(Number(port), '127.0.0.1', () => {
-        socket.write(`POST /mcp HTTP/1.1\r\nHost: [::1\r\nAuthorization: Bearer ${guzmanToken}\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}`);
-      });
+    const statusLine = (request: string) => new Promise<string>((resolve, reject) => {
+      const socket = tcpConnect(Number(port), '127.0.0.1', () => { socket.write(request); });
       let received = '';
-      socket.on('data', (chunk) => { received += chunk.toString(); if (received.includes('\r\n\r\n')) { socket.destroy(); resolve(received); } });
+      socket.on('data', (chunk) => { received += chunk.toString(); if (received.includes('\r\n\r\n')) { socket.destroy(); resolve(received.split('\r\n')[0]!); } });
       socket.on('error', reject);
       setTimeout(() => { socket.destroy(); reject(new Error('no answer')); }, 2_000);
     });
-    expect(malformed.split('\r\n')[0]).toMatch(/400/);
+    // The declared size is refused from the headers alone, before any body is read. Sending a real
+    // 1 MiB body raced the early 413 and failed now and then with ECONNRESET on the client's write.
+    expect(await statusLine(`POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nAuthorization: Bearer ${guzmanToken}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: ${1024 * 1024 + 1}\r\n\r\n`))
+      .toMatch(/ 413 /);
+    expect(await statusLine(`POST /mcp HTTP/1.1\r\nHost: [::1\r\nAuthorization: Bearer ${guzmanToken}\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}`))
+      .toMatch(/400/);
   });
 
   test('serves the same ten tools as stdio', async () => {

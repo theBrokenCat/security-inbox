@@ -12,7 +12,8 @@ const secretPatterns: ReadonlyArray<{ kind: string; pattern: RegExp }> = [
   { kind: 'Slack token', pattern: /\bxox[abposr]-[A-Za-z0-9-]{10,}/ },
   { kind: 'API key', pattern: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}/ },
   { kind: 'Google API key', pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
-  { kind: 'JSON Web Token', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
+  // Starts only where a token run starts, so a long run of eyJ-eyJ-… is scanned once, not once per eyJ.
+  { kind: 'JSON Web Token', pattern: /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
   { kind: 'GitLab token', pattern: /\bglpat-[A-Za-z0-9_-]{20,}/ },
   { kind: 'npm token', pattern: /\bnpm_[A-Za-z0-9]{36}\b/ },
   { kind: 'Stripe key', pattern: /\b[sr]k_live_[A-Za-z0-9]{16,}/ },
@@ -29,8 +30,9 @@ const placeholder = /^(?:\*+|x{3,}|<[^>]*>|\[[^\]]*\]|\$\{[^}]*\}|\$[A-Z_][A-Z0-
 const urlCredentials = /\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s:@/]*:([^\s@/]+)@/gi;
 // "password = value", "DB_PASS=value", "AWS_SECRET_ACCESS_KEY=value" or "api_key: value". Only
 // letters bound the keyword, and further _WORD parts may follow it before the separator, so
-// SCREAMING_SNAKE names match. The value must look like a value, not a word in prose.
-const assignment = /(?<![A-Za-z])(?:pass(?:wd|word)?|secret|token|api[-_]?key|access[-_]?token|auth[-_]?token|client[-_]?secret|private[-_]?key)(?:[-_][A-Za-z0-9]+)*(?![A-Za-z0-9])["']?\s*[:=]\s*["']?([^\s"',;]{8,})/gi;
+// SCREAMING_SNAKE names match. The value must look like a value, not a word in prose. At most
+// eight such parts, so a run like password_password_… costs linear time rather than quadratic.
+const assignment = /(?<![A-Za-z])(?:pass(?:wd|word)?|secret|token|api[-_]?key|access[-_]?token|auth[-_]?token|client[-_]?secret|private[-_]?key)(?:[-_][A-Za-z0-9]+){0,8}(?![A-Za-z0-9])["']?\s*[:=]\s*["']?([^\s"',;]{8,})/gi;
 
 function hasRealValue(expression: RegExp, text: string): boolean {
   for (const match of text.matchAll(expression)) {

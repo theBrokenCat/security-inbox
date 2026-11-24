@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 
@@ -20,7 +20,8 @@ let service: SecurityInboxService;
 let manager: ProjectDirectoryManager;
 
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'security-inbox-directories-'));
+  // Canonical, because the manager returns canonical paths and macOS's TMPDIR is a symlink.
+  directory = realpathSync(mkdtempSync(join(tmpdir(), 'security-inbox-directories-')));
   root = join(directory, 'projects');
   outside = join(directory, 'outside');
   mkdirSync(join(root, 'Zulu'), { recursive: true });

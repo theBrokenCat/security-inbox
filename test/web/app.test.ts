@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -21,7 +21,8 @@ let service: SecurityInboxService;
 let app: FastifyInstance;
 
 beforeEach(async () => {
-  directory = mkdtempSync(join(tmpdir(), 'security-inbox-web-'));
+  // Canonical, because the manager returns canonical paths and macOS's TMPDIR is a symlink.
+  directory = realpathSync(mkdtempSync(join(tmpdir(), 'security-inbox-web-')));
   projectsRoot = join(directory, 'projects');
   mkdirSync(join(projectsRoot, 'alpha', 'nested'), { recursive: true });
   service = new SecurityInboxService(join(directory, 'inbox.sqlite'));
@@ -321,7 +322,37 @@ describe('Security Inbox web adapter', () => {
     expect(response.statusCode).toBe(422);
     expect(response.body).toContain('parece una contraseña, token o clave');
     expect(response.body).toContain('Hardcoded credentials');
+    expect(response.body).not.toContain('p'.repeat(12));
+    expect(response.body).toContain('Parecía contener un secreto y se ha vaciado');
     expect(service.listFindings({ projectId: project.id })).toEqual([]);
+  });
+
+  test('never sends a credential back in any recovered draft, whatever error sent it back', async () => {
+    const project = service.createProject({ ownerId: testOwnerId(service), name: 'Drafts', description: 'Guarded' });
+    const finding = service.registerFinding(registration(project.id, 'draft-target')).finding;
+    const secret = `${'ghp_'}${'e'.repeat(36)}`;
+    const base = `/projects/${project.id}/findings`;
+    const detail = `${base}/${finding.id}`;
+    const submissions: Array<[string, Record<string, string>]> = [
+      // An invalid title fails validation before the secret check runs.
+      [base, { idempotencyKey: 'draft-new', title: '', description: 'Safe draft text', evidence: `token ${secret}` }],
+      [`${base}/precheck`, { idempotencyKey: 'draft-pre', title: 'Safe draft text', description: `token ${secret}` }],
+      [`${detail}/edit`, {
+        title: 'Safe draft text', description: finding.description, severity: 'not-a-severity',
+        origin: finding.origin, evidence: finding.evidence, recommendation: `use ${secret}`,
+      }],
+      [`${detail}/status`, { status: 'resolved', note: `token ${secret}` }],
+      [`${detail}/notes`, { note: `token ${secret}` }],
+    ];
+    for (const [url, fields] of submissions) {
+      const response = await post(url, { _csrf: await csrf(), ...fields });
+      expect(response.statusCode, url).toBeLessThan(500);
+      expect(response.body, url).not.toContain(secret);
+      expect(response.body, url).toContain('Parecía contener un secreto y se ha vaciado');
+    }
+    const draft = await post(base, { _csrf: await csrf(), ...submissions[0]![1] });
+    expect(draft.body).toContain('Safe draft text');
+    expect(service.getFinding({ projectId: project.id, findingId: finding.id }).history).toHaveLength(1);
   });
 
   test('prechecks duplicates, then creates, views, edits, changes status, and adds a note', async () => {
@@ -567,6 +598,10 @@ describe('Security Inbox web adapter', () => {
     expect(css.body).not.toMatch(/https?:\/\//);
     expect(css.body).not.toMatch(/repeating-linear-gradient|Georgia|rotate\(/);
     expect(css.body).toContain('--canvas:');
+    const declared = new Set([...css.body.matchAll(/(--[\w-]+)\s*:/g)].map(([, name]) => name));
+    const used = [...css.body.matchAll(/var\((--[\w-]+)/g)].map(([, name]) => name);
+    expect(used.filter((name) => !declared.has(name))).toEqual([]);
+    expect(css.body).not.toMatch(/(--[\w-]+)\s*:\s*var\(\1\)/);
     expect(css.body).toContain('"Avenir Next"');
     expect(css.body).toContain('outline: 3px solid var(--focus)');
     expect(css.body).toContain('--medium: #7a5300');

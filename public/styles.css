@@ -48,8 +48,6 @@
 
   --warn-bg: #fdf6e3;
   --warn-border: #edd9a3;
-  --folder: #dbe6f7;
-  --folder-line: var(--folder-line);
 
   --accent: var(--navy);
   --shadow: 0 1px 2px rgba(20, 26, 43, .05), 0 10px 28px rgba(20, 26, 43, .06);
@@ -108,8 +106,6 @@
 
     --warn-bg: #2b2413;
     --warn-border: #4d4224;
-    --folder: #263447;
-    --folder-line: #46586f;
 
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px rgba(0, 0, 0, .35);
   }
@@ -337,8 +333,6 @@ summary { display: flex; align-items: center; min-height: 2.75rem; font-size: 1.
 .directory-list a:hover { background: var(--surface-alt); }
 .directory-list strong, .directory-list small { display: block; }
 .directory-list small { margin-top: .15rem; color: var(--muted); overflow-wrap: anywhere; }
-.folder-icon { position: relative; width: 1.2rem; height: .85rem; background: var(--folder); border: 1px solid var(--folder-line); border-radius: 2px; }
-.folder-icon::before { position: absolute; bottom: 100%; left: -.05rem; width: .55rem; height: .25rem; content: ""; background: var(--folder); border: 1px solid var(--folder-line); border-bottom: 0; border-radius: 2px 2px 0 0; }
 .selection-panel { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: .75rem 1rem; padding: 1.2rem; background: var(--surface-alt); border-top: 1px solid var(--border); }
 .selection-panel__info { grid-column: 1 / -1; }
 .selection-panel strong { display: block; margin-top: .2rem; font-size: 1.05rem; overflow-wrap: anywhere; }
